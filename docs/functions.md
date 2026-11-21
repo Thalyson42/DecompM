@@ -51,3 +51,6 @@ A entrada/saída 0 <-> 20 (e agachar 10/12, pular 40/45) é código do exe em `F
 
 ## Física portada
 `Engine::physics`: pos += vel; atrito S/C; gravidade e pouso (estado 52) em A. Velocidade guardada em coordenada absoluta (VelSet/VelAdd multiplicam pelo lado). Limite de loops da máquina de estados = 2501, como no exe. Detalhes em docs/mugen_exe_achados.md.
+
+## Combate (primeira fatia)
+`src/engine/combat.*`: Clsn1 x Clsn2, HitDef, pausa de hit, estado de apanhar 5000/5010/5020, GetHitVar. Baseado na documentação. Pendente: conferir em FUN_0043FD80 e FUN_0043ECE0 (ver docs/mugen_exe_achados.md).

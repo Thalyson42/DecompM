@@ -26,7 +26,8 @@ foreach(t sff2png sprmake2 sndmaker)
   target_link_libraries(${t} decompm_sff)
 endforeach()
 
-add_library(decompm_engine src/engine/character.h src/engine/character.cpp src/engine/player.h src/engine/player.cpp)
+add_library(decompm_engine src/engine/character.h src/engine/character.cpp src/engine/player.h src/engine/player.cpp
+            src/engine/combat.h src/engine/combat.cpp)
 target_link_libraries(decompm_engine decompm_parser)
 target_include_directories(decompm_engine PUBLIC src)
 
@@ -40,4 +41,7 @@ if(MUGEN_DIR)
   add_executable(engine_kfm_test tests/engine_kfm_test.cpp)
   target_link_libraries(engine_kfm_test decompm_engine)
   add_test(NAME engine_kfm_test COMMAND engine_kfm_test ${MUGEN_DIR})
+  add_executable(combat_kfm_test tests/combat_kfm_test.cpp)
+  target_link_libraries(combat_kfm_test decompm_engine)
+  add_test(NAME combat_kfm_test COMMAND combat_kfm_test ${MUGEN_DIR})
 endif()

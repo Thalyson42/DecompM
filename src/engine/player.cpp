@@ -8,6 +8,7 @@ static std::string lower(std::string s) { for (size_t i = 0; i < s.size(); ++i) 
 
 Player::Player() : stateNo(0), prevStateNo(0), time(0), ctrl(false), anim(0), animElapsed(0),
     posX(0), posY(0), velX(0), velY(0), facing(1), life(1000), power(0),
+    pauseTime(0), hitTime(0), moveContact(false), moveHit(false), life0(1000),
     stateType('S'), moveType('I'), physics('N') {
     for (int i = 0; i < 60; ++i) var[i] = 0;
     for (int i = 0; i < 40; ++i) fvar[i] = 0;
@@ -64,12 +65,63 @@ struct PlayerCtx : ExprContext {
             return true;
         }
         if (n == "pi") { out = V::Float(3.14159265f); return true; }
+        if (n == "movecontact") { out = V::Int(p.moveContact ? 1 : 0); return true; }
+        if (n == "movehit")     { out = V::Int(p.moveHit ? 1 : 0); return true; }
+        if (n == "moveguarded") { out = V::Int(0); return true; }               // guarda ainda nao implementada
+        if (n == "hitshakeover"){ out = V::Int(p.pauseTime <= 0 ? 1 : 0); return true; }
+        if (n == "hitover")     { out = V::Int(p.hitTime <= 0 ? 1 : 0); return true; }
+        if (n == "hitpausetime"){ out = V::Int(p.pauseTime); return true; }
+        if (n == "selfanimexist" && want(a, 1) && a[0].kind == V::INT) { out = V::Int(e.anim_exists(a[0].i) ? 1 : 0); return true; }
+        if (n == "animelemtime" && want(a, 1) && a[0].kind == V::INT) {
+            int t; if (e.anim_elem_time(p, a[0].i, t)) { out = V::Int(t); return true; } out = V::Bottom(); return true;
+        }
+        if (n.compare(0, 10, "gethitvar:") == 0) {
+            const GetHitVars& g = p.gethit; std::string v = n.substr(10);
+            if (v == "animtype") out = V::Int(g.animType);
+            else if (v == "groundtype") out = V::Int(g.groundType);
+            else if (v == "airtype") out = V::Int(g.airType);
+            else if (v == "slidetime") out = V::Int(g.slideTime);
+            else if (v == "ctrltime") out = V::Int(g.ctrlTime);
+            else if (v == "hittime") out = V::Int(g.hitTime);
+            else if (v == "fall") out = V::Int(g.fall);
+            else if (v == "damage") out = V::Int(g.damage);
+            else if (v == "xvel") out = V::Float(g.xvel);
+            else if (v == "yvel") out = V::Float(g.yvel);
+            else if (v == "yaccel") out = V::Float(g.yaccel);
+            else if (v == "fall.yvel") out = V::Float(g.fallYvel);
+            else { p.skipped["gethitvar:" + v]++; return false; }
+            return true;
+        }
         // letras de atributo usadas como valores ("StateType = S", "MoveType = A")
         if (a.empty() && (n == "s" || n == "c" || n == "a" || n == "l" || n == "i" || n == "h" || n == "n" || n == "u")) {
             out = V::Str(rawName); return true;
         }
         e.cache_.size();   // (sem efeito; mantem 'e' usado)
         p.skipped["trigger:" + rawName]++;
+        return false;
+    }
+    // "AnimElem = n" equivale a AnimElemTime(n) = 0
+    bool call_eq(const std::string& rawName, const std::vector<ExprValue>&, const ExprValue& rhs, ExprValue& out) {
+        if (lower(rawName) == "animelem" && rhs.kind == ExprValue::INT) {
+            int t; out = ExprValue::Int(e.anim_elem_time(p, rhs.i, t) && t == 0 ? 1 : 0); return true;
+        }
+        return false;
+    }
+    // "AnimElem = n, op v" (AnimElemTime(n) op v) e "TimeMod = a, b" (Time % a = b)
+    bool call_list(const std::string& rawName, const std::vector<ExprValue>&, const ExprValue& rhs,
+                   const std::vector<ExprContext::Extra>& ex, ExprValue& out) {
+        std::string n = lower(rawName);
+        if (n == "animelem" && rhs.kind == ExprValue::INT && ex.size() == 1) {
+            int t; if (!e.anim_elem_time(p, rhs.i, t)) { out = ExprValue::Bottom(); return true; }
+            const ExprContext::Extra& x = ex[0];
+            if (x.value.kind != ExprValue::INT) { out = ExprValue::Bottom(); return true; }
+            bool r = x.op == "=" ? t == x.value.i : x.op == "!=" ? t != x.value.i : x.op == "<" ? t < x.value.i
+                   : x.op == "<=" ? t <= x.value.i : x.op == ">" ? t > x.value.i : t >= x.value.i;
+            out = ExprValue::Int(r ? 1 : 0); return true;
+        }
+        if (n == "timemod" && rhs.kind == ExprValue::INT && ex.size() == 1 && ex[0].op.empty() && ex[0].value.kind == ExprValue::INT && rhs.i != 0) {
+            out = ExprValue::Int(p.time % rhs.i == ex[0].value.i ? 1 : 0); return true;
+        }
         return false;
     }
     bool call_eq_str(const std::string& rawName, const std::vector<ExprValue>&, const std::string& rhs, ExprValue& out) {
@@ -104,6 +156,10 @@ const ExprNode* Engine::parse(const std::string& text) {
 // Substitui Const(nome) por literais antes de avaliar (o argumento e um nome, nao uma expressao).
 static void fold_consts(ExprNode* n, const Character& ch) {
     for (size_t i = 0; i < n->kids.size(); ++i) fold_consts(n->kids[i].get(), ch);
+    if (n->type == ExprNode::CALL && lower(n->str) == "gethitvar" && n->kids.size() == 1 && n->kids[0]->type == ExprNode::CALL) {
+        n->str = "gethitvar:" + lower(n->kids[0]->str); n->kids.clear();
+        return;
+    }
     if (n->type == ExprNode::CALL && lower(n->str) == "const" && n->kids.size() == 1 && n->kids[0]->type == ExprNode::CALL) {
         float v = 0;
         std::string name = n->kids[0]->str;
@@ -128,6 +184,30 @@ int Engine::anim_looptime(int action) const {
     std::map<int, AirAction>::const_iterator it = ch_.anims.find(action);
     if (it == ch_.anims.end()) return 0;
     return it->second.looptime();
+}
+
+const AirFrame* Engine::current_frame(const Player& p) const {
+    std::map<int, AirAction>::const_iterator it = ch_.anims.find(p.anim);
+    if (it == ch_.anims.end() || it->second.frames.empty()) return 0;
+    const AirAction& a = it->second;
+    int lt = a.looptime(), t = p.animElapsed;
+    if (lt > 0 && t >= lt) t = lt - 1;               // no tick AnimTime = 0 o ultimo elemento ainda aparece
+    int acc = 0;
+    for (size_t i = 0; i < a.frames.size(); ++i) {
+        if (a.frames[i].time < 0) return &a.frames[i];   // tempo infinito
+        acc += a.frames[i].time;
+        if (t < acc) return &a.frames[i];
+    }
+    return &a.frames[a.frames.size() - 1];
+}
+
+bool Engine::anim_elem_time(const Player& p, int n, int& out) const {
+    std::map<int, AirAction>::const_iterator it = ch_.anims.find(p.anim);
+    if (it == ch_.anims.end() || n < 1 || n > (int)it->second.frames.size()) return false;
+    int start = 0;
+    for (int i = 0; i < n - 1; ++i) { if (it->second.frames[i].time < 0) return false; start += it->second.frames[i].time; }
+    out = p.animElapsed - start;
+    return true;
 }
 
 void Engine::set_anim(Player& p, int action, int elem) {
@@ -168,6 +248,7 @@ bool Engine::enter_state(Player& p, int n) {
     const CnsStatedef* sd = ch_.state(n);
     if (!sd) return false;
     p.prevStateNo = p.stateNo; p.stateNo = n; p.time = 0; p.persist.clear();
+    p.moveContact = p.moveHit = false; p.hitdef.active = false;   // vale ate trocar de estado
     // Parametros do Statedef; omitidos assumem S / I / N (doc). "U" = sem mudanca.
     std::string v;
     v = sd->param("type");     p.stateType = v.empty() ? 'S' : (char)std::toupper((unsigned char)v[0]) == 'U' ? p.stateType : (char)std::toupper((unsigned char)v[0]);
@@ -197,6 +278,50 @@ bool Engine::triggered(Player& p, const CnsController& c) {
         if (all) return true;
     }
     return false;
+}
+
+std::string Engine::raw_param(const CnsController& c, const char* key) const {
+    for (size_t i = 0; i < c.params.size(); ++i) if (ini_iequals(c.params[i].key, key)) return c.params[i].value;
+    return "";
+}
+
+static std::string first_token(const std::string& v) {
+    size_t i = 0; while (i < v.size() && std::isspace((unsigned char)v[i])) ++i;
+    size_t j = i; while (j < v.size() && v[j] != ',' && !std::isspace((unsigned char)v[j])) ++j;
+    return v.substr(i, j - i);
+}
+static int hit_type(const std::string& v, int def) {
+    std::string t = lower(first_token(v));
+    if (t == "high") return 1; if (t == "low") return 2; if (t == "trip") return 3; if (t == "none") return 0;
+    return def;
+}
+
+void Engine::exec_hitdef(Player& p, const CnsController& c) {
+    HitDef h;
+    std::string attr = raw_param(c, "attr");
+    size_t comma = attr.find(',');
+    std::string a1 = lower(first_token(attr));
+    for (size_t i = 0; i < a1.size(); ++i) { if (a1[i] == 's') h.attrTypes |= 1; else if (a1[i] == 'c') h.attrTypes |= 2; else if (a1[i] == 'a') h.attrTypes |= 4; }
+    if (comma != std::string::npos) h.attrKind = first_token(attr.substr(comma + 1));
+    std::string hf = raw_param(c, "hitflag"); if (!hf.empty()) h.hitflag = first_token(hf);
+    std::vector<ExprValue> v; int iv; float fv;
+    if (param_values(p, c, "damage", v)) { if (v.size() > 0) h.damage = to_i(v[0]); if (v.size() > 1) h.guardDamage = to_i(v[1]); }
+    if (param_values(p, c, "pausetime", v)) { if (v.size() > 0) h.pause1 = to_i(v[0]); if (v.size() > 1) h.pause2 = to_i(v[1]); }
+    if (param_int(p, c, "ground.hittime", iv)) h.groundHitTime = iv;
+    if (param_int(p, c, "ground.slidetime", iv)) h.groundSlideTime = iv;
+    if (param_int(p, c, "air.hittime", iv)) h.airHitTime = iv;
+    if (param_values(p, c, "ground.velocity", v)) { if (v.size() > 0) h.groundVelX = to_f(v[0]); if (v.size() > 1) h.groundVelY = to_f(v[1]); }
+    if (param_values(p, c, "air.velocity", v)) { if (v.size() > 0) h.airVelX = to_f(v[0]); if (v.size() > 1) h.airVelY = to_f(v[1]); }
+    h.groundType = hit_type(raw_param(c, "ground.type"), 1);
+    h.airType = raw_param(c, "air.type").empty() ? h.groundType : hit_type(raw_param(c, "air.type"), h.groundType);
+    std::string at = lower(first_token(raw_param(c, "animtype")));
+    h.animType = at == "medium" ? 1 : at == "hard" ? 2 : at == "back" ? 3 : at == "up" ? 4 : at == "diagup" ? 5 : 0;
+    if (param_float(p, c, "yaccel", fv)) h.yaccel = fv;
+    if (param_int(p, c, "fall", iv)) h.fall = iv;
+    if (param_values(p, c, "priority", v) && !v.empty()) h.priority = to_i(v[0]);
+    if (param_int(p, c, "hitonce", iv)) h.hitOnce = iv != 0;
+    h.active = true;
+    p.hitdef = h;
 }
 
 bool Engine::exec(Player& p, const CnsController& c) {
@@ -242,7 +367,14 @@ bool Engine::exec(Player& p, const CnsController& c) {
         }
         return false;
     }
-    if (t == "null") return false;
+    if (t == "hitdef") { exec_hitdef(p, c); return false; }
+    if (t == "hitvelset") {
+        // x/y = 1: usa a velocidade do golpe recebido (GetHitVar xvel/yvel). xvel e relativo ao lado de quem apanha.
+        if (param_int(p, c, "x", iv) && iv != 0) p.velX = p.gethit.xvel * (float)p.facing;
+        if (param_int(p, c, "y", iv) && iv != 0) p.velY = p.gethit.yvel;
+        return false;
+    }
+    if (t == "defencemulset" || t == "forcefeedback" || t == "null") return false;   // sem efeito no motor (por enquanto)
     p.skipped["controller:" + c.type]++;
     return false;
 }
@@ -304,14 +436,18 @@ void Engine::physics(Player& p) {
 }
 
 void Engine::tick(Player& p) {
-    default_movement(p);
-    physics(p);
+    // Pausa de hit (hitpause / shake): o exe decrementa a pausa no lugar de mover (FUN_0043c480).
+    // Durante a pausa so rodam controllers com ignorehitpause (docs); Time e animacao ficam congelados.
+    bool paused = p.pauseTime > 0;
+    if (!paused) { default_movement(p); physics(p); }
+    else --p.pauseTime;
     // 1) estados especiais -3, -2, -1: uma passada; ChangeState aborta so o restante daquele estado
     for (int sn = -3; sn <= -1; ++sn) {
         const CnsStatedef* sd = ch_.state(sn);
         if (!sd) continue;
         for (size_t i = 0; i < sd->controllers.size(); ++i) {
             const CnsController& c = sd->controllers[i];
+            if (paused && std::atoi(c.ignoreHitPause.c_str()) == 0) continue;
             if (!triggered(p, c)) continue;
             if (exec(p, c)) break;
         }
@@ -325,6 +461,7 @@ void Engine::tick(Player& p) {
         if (!sd) break;
         for (size_t i = 0; i < sd->controllers.size(); ++i) {
             const CnsController& c = sd->controllers[i];
+            if (paused && std::atoi(c.ignoreHitPause.c_str()) == 0) continue;
             if (!triggered(p, c)) continue;
             // persistent: 1 = todo tick (padrao); 0 = uma vez por entrada no estado; n>1 = 1 a cada n ticks verdadeiros
             int per = 1;
@@ -341,8 +478,11 @@ void Engine::tick(Player& p) {
     }
     if (restart) p.skipped["state-machine-stuck"]++;
     // 3) fim do tick
-    ++p.time;
-    ++p.animElapsed;
-    int lt = anim_looptime(p.anim);
-    if (lt > 0 && p.animElapsed > lt) p.animElapsed -= lt;   // animacao em loop
+    if (!paused) {
+        ++p.time;
+        ++p.animElapsed;
+        int lt = anim_looptime(p.anim);
+        if (lt > 0 && p.animElapsed > lt) p.animElapsed -= lt;   // animacao em loop
+        if (p.hitTime > 0) --p.hitTime;                          // tempo restante no estado de apanhar
+    }
 }

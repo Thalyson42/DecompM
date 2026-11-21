@@ -82,3 +82,17 @@ Porte: `Engine::physics` e `Engine::tick` (`src/engine/player.cpp`). Testes com 
 esquerda = -24 px, pulo com ápice -84.4 e pouso no tick 43 voltando a `posY = 0`.
 Ordem do tick no porte: movimento embutido → física → estados -3/-2/-1 e atual.
 Não portado: hitpause, escala entre localcoords, limiar de atrito do exe, o `z`.
+
+## Combate (src/engine/combat.*): PRIMEIRA FATIA, baseada na documentação (NÃO verificada no exe)
+Pistas no exe para conferir depois: `FUN_0043D950` → `FUN_0043FD80` (colisão/hits, 8 KB) e `FUN_0043ECE0` (16 KB, grava os estados 5020, 5070
+e 5080 de apanhar). `FUN_0043A9A0` NÃO é de combate: valida que o personagem tem os sprites e animações obrigatórios
+("%s (%i) missing required sprites/animation actions"), com a lista de estados/animações 10, 11, 12, 20, 21, 40..., 5000...
+No pipeline do frame o hit vem depois da atualização do jogador (`FUN_0043C480`).
+
+Implementado e testado com dois KFM (`tests/combat_kfm_test.cpp`): caixas Clsn1 x Clsn2 em coordenadas do mundo (espelhadas pelo lado),
+HitDef (attr, hitflag, damage, pausetime, ground/air velocity, hittime, slidetime, animtype, ground/air type), pausa de hit
+(atacante congela, defensor "treme"), estado de apanhar 5000/5010/5020 por statetype, GetHitVar, MoveContact/MoveHit, HitShakeOver,
+HitOver, HitVelSet, AnimElem/AnimElemTime e TimeMod (sintaxe antiga).
+Resultado do teste: soco 200 a 50 px acerta no tick 3 (AnimElem = 3), p2 perde 23, vai a 5000 (shake de 8 ticks), depois 5001 e volta ao 0
+no tick 23, empurrado para 67 px. A 100 px o golpe erra.
+Não implementado: guarda, prioridade entre golpes simultâneos, NotHitBy/HitBy, juggle, fall, cantos da tela, virar para o atacante.

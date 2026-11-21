@@ -367,6 +367,14 @@ ExprValue expr_eval(const ExprNode* n, ExprContext& ctx) {
             if (ctx.call_eq_str(l->str, args, n->kids[1]->str, out) && out.kind == V::INT)
                 return V::Int(op == "=" ? out.i : (out.i ? 0 : 1));
         }
+        if ((op == "=" || op == "!=") && n->kids[0]->type == N::CALL) {
+            const N* l = n->kids[0].get();
+            std::vector<V> args;
+            for (size_t i = 0; i < l->kids.size(); ++i) args.push_back(expr_eval(l->kids[i].get(), ctx));
+            V rhs = expr_eval(n->kids[1].get(), ctx), out;
+            if (n->kids[1]->type != N::STRING && ctx.call_eq(l->str, args, rhs, out) && out.kind == V::INT)
+                return V::Int(op == "=" ? out.i : (out.i ? 0 : 1));
+        }
         V a = expr_eval(n->kids[0].get(), ctx), b = expr_eval(n->kids[1].get(), ctx);
         if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%" || op == "**") return arith(op, a, b);
         if (op == "&&" || op == "||" || op == "^^") {
@@ -393,7 +401,26 @@ ExprValue expr_eval(const ExprNode* n, ExprContext& ctx) {
         if (!ctx.redirect(r->str, args, n->kids[1].get(), out)) return V::Bottom();
         return out;
     }
-    default: break;   // PARTIAL e LIST so existem dentro de listas de parametros
+    case N::LIST: {
+        // "Nome = valor, extra..." (sintaxe antiga). Qualquer outra lista (parametros) nao tem valor unico.
+        if (n->kids.empty() || n->kids[0]->type != N::BINARY || n->kids[0]->str != "=" || n->kids[0]->kids[0]->type != N::CALL) return V::Bottom();
+        const N* b0 = n->kids[0].get(); const N* l = b0->kids[0].get();
+        std::vector<V> args;
+        for (size_t i = 0; i < l->kids.size(); ++i) args.push_back(expr_eval(l->kids[i].get(), ctx));
+        V rhs = expr_eval(b0->kids[1].get(), ctx);
+        std::vector<ExprContext::Extra> ex;
+        for (size_t i = 1; i < n->kids.size(); ++i) {
+            ExprContext::Extra e;
+            const N* k = n->kids[i].get();
+            if (k->type == N::PARTIAL) { e.op = k->str; e.value = expr_eval(k->kids[0].get(), ctx); }
+            else e.value = expr_eval(k, ctx);
+            ex.push_back(e);
+        }
+        V out;
+        if (ctx.call_list(l->str, args, rhs, ex, out)) return out;
+        return V::Bottom();
+    }
+    default: break;   // PARTIAL so existe dentro de listas
     }
     return V::Bottom();
 }

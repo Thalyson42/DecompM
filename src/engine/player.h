@@ -10,6 +10,36 @@
 // Estado de um jogador e maquina de estados do MUGEN (um "tick" = 1/60 s).
 // Implementado a partir da descricao de docs/cns.html. Fisica (gravidade, atrito, pouso), colisao, hits e
 // som ainda NAO existem; controllers nao implementados sao contados em 'skipped'.
+// HitDef ativo (controller HitDef). Baseado em docs/sctrls.html; NAO verificado no exe ainda
+// (a aplicacao de hits parece ficar em FUN_0043ECE0, 16 KB, a estudar).
+struct HitDef {
+    bool  active;
+    int   attrTypes;                 // bit 1 = S, 2 = C, 4 = A (arg1 de "attr")
+    std::string attrKind;            // arg2 de "attr", ex.: "NA"
+    std::string hitflag;             // padrao "MAF"
+    int   damage, guardDamage;
+    int   pause1, pause2;            // pausetime: congela o atacante / faz o oponente tremer
+    int   groundHitTime, groundSlideTime, airHitTime;
+    float groundVelX, groundVelY, airVelX, airVelY;
+    int   groundType, airType;       // 1 = High, 2 = Low, 3 = Trip, 0 = None
+    int   animType;                  // 0 Light, 1 Medium, 2 Hard, 3 Back, 4 Up, 5 DiagUp
+    float yaccel;
+    int   fall;
+    int   priority;
+    bool  hitOnce;
+    HitDef() : active(false), attrTypes(0), hitflag("MAF"), damage(0), guardDamage(0), pause1(0), pause2(0),
+        groundHitTime(0), groundSlideTime(0), airHitTime(20), groundVelX(0), groundVelY(0), airVelX(0), airVelY(0),
+        groundType(1), airType(1), animType(0), yaccel(0.35f), fall(0), priority(4), hitOnce(true) {}
+};
+
+// Valores de GetHitVar(...) do ultimo golpe recebido.
+struct GetHitVars {
+    int animType, groundType, airType, slideTime, ctrlTime, hitTime, fall, damage;
+    float xvel, yvel, yaccel, fallYvel;
+    GetHitVars() : animType(0), groundType(0), airType(0), slideTime(0), ctrlTime(0), hitTime(0), fall(0), damage(0),
+        xvel(0), yvel(0), yaccel(0), fallYvel(0) {}
+};
+
 struct Player {
     int   stateNo, prevStateNo, time;
     bool  ctrl;
@@ -20,6 +50,13 @@ struct Player {
     char  stateType, moveType, physics;
     int   var[60];
     float fvar[40];
+    // combate
+    HitDef hitdef;
+    GetHitVars gethit;
+    int   pauseTime;                  // hitpause: ticks restantes (atacante) / shake (defensor)
+    int   hitTime;                    // ticks restantes no estado de apanhar depois do shake
+    bool  moveContact, moveHit;       // vale ate trocar de estado
+    int   life0;                      // vida inicial (so para informacao)
     std::set<std::string> commands;   // comandos ativos neste tick (minusculas), definidos pelo chamador
     std::map<std::string, int> persist; // contadores de "persistent" por controller, zerados ao trocar de estado
     std::map<std::string, int> skipped; // controllers sem implementacao ja encontrados -> quantas vezes
@@ -40,6 +77,10 @@ public:
     void physics(Player& p);
     // Soma dos tempos da acao (-1 = infinito, 0 = acao inexistente).
     int anim_looptime(int action) const;
+    // Elemento de animacao em exibicao (nullptr se a acao nao existe) e tempo desde o inicio do elemento n (1-based).
+    const AirFrame* current_frame(const Player& p) const;
+    bool anim_elem_time(const Player& p, int n, int& out) const;
+    bool anim_exists(int action) const { return ch_.anims.count(action) != 0; }
     const Character& character() const { return ch_; }
 private:
     friend struct PlayerCtx;
@@ -54,4 +95,6 @@ private:
     // Executa o controller. Retorna true se trocou de estado.
     bool exec(Player& p, const CnsController& c);
     void set_anim(Player& p, int action, int elem);
+    void exec_hitdef(Player& p, const CnsController& c);
+    std::string raw_param(const CnsController& c, const char* key) const;
 };

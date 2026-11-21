@@ -57,6 +57,13 @@ struct ExprContext {
     // Comparacao "Nome = \"texto\"" (ex.: Command = "holdfwd"). Se retornar true, 'out' e o resultado (0/1) de "=".
     // O avaliador inverte o resultado para "!=". Se retornar false, cai na comparacao normal.
     virtual bool call_eq_str(const std::string&, const std::vector<ExprValue>&, const std::string&, ExprValue&) { return false; }
+    // Sintaxe antiga "Nome = valor" onde Nome e um trigger com semantica propria (ex.: AnimElem = 3 significa
+    // AnimElemTime(3) = 0). Se retornar true, 'out' e o resultado de "=" (o avaliador inverte para "!=").
+    virtual bool call_eq(const std::string&, const std::vector<ExprValue>&, const ExprValue&, ExprValue&) { return false; }
+    // Sintaxe antiga com lista: "AnimElem = 2, >= 5" / "TimeMod = 4, 0". 'extras' traz cada item depois da virgula:
+    // op vazio para um valor simples, ou o operador ("=", ">=", ...) para um fragmento "op valor".
+    struct Extra { std::string op; ExprValue value; };
+    virtual bool call_list(const std::string&, const std::vector<ExprValue>&, const ExprValue&, const std::vector<Extra>&, ExprValue&) { return false; }
     // Redirecionamento: avalia 'inner' no contexto de outro personagem. Retorne false se nao existir.
     virtual bool redirect(const std::string& name, const std::vector<ExprValue>& args,
                           const ExprNode* inner, ExprValue& out) = 0;
