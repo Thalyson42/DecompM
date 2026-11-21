@@ -84,8 +84,15 @@ bool Character::constant(const std::string& rawName, float& out) const {
     if (sec == consts.end()) return false;
     std::string rest = name.substr(dot + 1);
     int comp = 0;
+    // O exe conhece nomes que nao existem no .cns: velocity.jump.y, velocity.runjump.y e velocity.airjump.y.
+    // Suposicao (a confirmar no exe): sao o componente y de jump.neu / runjump.fwd / airjump.neu.
+    if (name.compare(0, dot + 1, "velocity.") == 0) {
+        if (rest == "jump.y")    { rest = "jump.neu";    comp = 1; }
+        else if (rest == "runjump.y") { rest = "runjump.fwd"; comp = 1; }
+        else if (rest == "airjump.y") { rest = "airjump.neu"; comp = 1; }
+    }
     const IniEntry* e = ini_find(sec->second, rest);
-    if (!e) {
+    if (!e && comp == 0) {
         size_t d2 = rest.find_last_of('.');
         if (d2 == std::string::npos) return false;
         std::string suffix = rest.substr(d2 + 1);
@@ -94,6 +101,7 @@ bool Character::constant(const std::string& rawName, float& out) const {
         e = ini_find(sec->second, rest.substr(0, d2));
         if (!e) return false;
     }
+    if (!e) return false;
     // valor: "a" ou "a, b"
     std::string v = e->value; int idx = 0; size_t pos = 0;
     for (;;) {

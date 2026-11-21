@@ -34,7 +34,7 @@ struct PlayerCtx : ExprContext {
             out = V::Int(lt > 0 ? p.animElapsed - lt : -1);   // lt<0 (infinito): valor provisorio, a confirmar
             return true;
         }
-        if (n == "vel x") { out = V::Float(p.velX); return true; }
+        if (n == "vel x") { out = V::Float(p.velX * (float)p.facing); return true; }   // guardada em coordenada absoluta
         if (n == "vel y") { out = V::Float(p.velY); return true; }
         if (n == "pos x") { out = V::Float(p.posX); return true; }
         if (n == "pos y") { out = V::Float(p.posY); return true; }
@@ -178,7 +178,7 @@ bool Engine::enter_state(Player& p, int n) {
     tmp.params.assign(sd->params.begin(), sd->params.end());
     int iv; std::vector<ExprValue> vv;
     if (param_int(p, tmp, "anim", iv)) set_anim(p, iv, 1);
-    if (param_values(p, tmp, "velset", vv)) { if (vv.size() > 0) p.velX = to_f(vv[0]); if (vv.size() > 1) p.velY = to_f(vv[1]); }
+    if (param_values(p, tmp, "velset", vv)) { if (vv.size() > 0) p.velX = to_f(vv[0]) * (float)p.facing; if (vv.size() > 1) p.velY = to_f(vv[1]); }
     if (param_int(p, tmp, "ctrl", iv)) p.ctrl = iv != 0;
     if (param_int(p, tmp, "poweradd", iv)) p.power += iv;
     return true;
@@ -212,11 +212,12 @@ bool Engine::exec(Player& p, const CnsController& c) {
     }
     if (t == "ctrlset")   { if (param_int(p, c, "value", iv)) p.ctrl = iv != 0; return false; }
     if (t == "changeanim"){ int el = 1; param_int(p, c, "elem", el); if (param_int(p, c, "value", iv)) set_anim(p, iv, el); return false; }
-    if (t == "velset")    { if (param_float(p, c, "x", fv)) p.velX = fv; if (param_float(p, c, "y", fv)) p.velY = fv; return false; }
-    if (t == "veladd")    { if (param_float(p, c, "x", fv)) p.velX += fv; if (param_float(p, c, "y", fv)) p.velY += fv; return false; }
+    if (t == "velset")    { if (param_float(p, c, "x", fv)) p.velX = fv * (float)p.facing; if (param_float(p, c, "y", fv)) p.velY = fv; return false; }
+    if (t == "veladd")    { if (param_float(p, c, "x", fv)) p.velX += fv * (float)p.facing; if (param_float(p, c, "y", fv)) p.velY += fv; return false; }
     if (t == "velmul")    { if (param_float(p, c, "x", fv)) p.velX *= fv; if (param_float(p, c, "y", fv)) p.velY *= fv; return false; }
     if (t == "posset")    { if (param_float(p, c, "x", fv)) p.posX = fv; if (param_float(p, c, "y", fv)) p.posY = fv; return false; }
-    if (t == "posadd")    { if (param_float(p, c, "x", fv)) p.posX += fv; if (param_float(p, c, "y", fv)) p.posY += fv; return false; }
+    // PosAdd x relativo ao lado: suposicao baseada na documentacao (a confirmar no exe)
+    if (t == "posadd")    { if (param_float(p, c, "x", fv)) p.posX += fv * (float)p.facing; if (param_float(p, c, "y", fv)) p.posY += fv; return false; }
     if (t == "poweradd")  { if (param_int(p, c, "value", iv)) p.power += iv; return false; }
     if (t == "powerset")  { if (param_int(p, c, "value", iv)) p.power = iv; return false; }
     if (t == "lifeadd")   { if (param_int(p, c, "value", iv)) p.life += iv; return false; }
@@ -282,8 +283,29 @@ void Engine::default_movement(Player& p) {
     if (p.stateType == 'C' && p.ctrl && !keepCrouch) enter_state(p, 12);
 }
 
+// Porte da parte de fisica de FUN_0043c480 (mugen.exe 1.1b1), na ordem do exe:
+//  1) pos += vel (a velocidade guardada ja inclui o lado; VelSet/VelAdd multiplicam por facing)
+//  2) physics S: vel.x *= movement.stand.friction;  C: vel.x *= movement.crouch.friction
+//     A: vel.y += movement.yaccel; se vel.y > 0, pos.y > 0 e stateno != 105 -> estado 52 (pouso), Time = 0
+// NAO portado: hitpause (decrementa em vez de mover), escala entre localcoords diferentes, o limiar de atrito
+// do exe (o common1.cns ja zera vel x abaixo de movement.stand.friction.threshold) e o resto do pouso.
+void Engine::physics(Player& p) {
+    p.posX += p.velX;
+    p.posY += p.velY;
+    float k = 0;
+    if (p.physics == 'S') { if (ch_.constant("movement.stand.friction", k))  p.velX *= k; }
+    else if (p.physics == 'C') { if (ch_.constant("movement.crouch.friction", k)) p.velX *= k; }
+    else if (p.physics == 'A') {
+        if (ch_.constant("movement.yaccel", k)) p.velY += k;
+        if (p.stateNo != 105 && p.velY > 0 && p.posY > 0) {
+            if (ch_.state(52)) { p.prevStateNo = p.stateNo; p.stateNo = 52; p.time = 0; p.persist.clear(); }
+        }
+    }
+}
+
 void Engine::tick(Player& p) {
     default_movement(p);
+    physics(p);
     // 1) estados especiais -3, -2, -1: uma passada; ChangeState aborta so o restante daquele estado
     for (int sn = -3; sn <= -1; ++sn) {
         const CnsStatedef* sd = ch_.state(sn);
@@ -297,7 +319,7 @@ void Engine::tick(Player& p) {
     // 2) estado atual; apos ChangeState recomeca do inicio do novo estado (limite contra lacos infinitos)
     int transitions = 0;
     bool restart = true;
-    while (restart && transitions <= 100) {
+    while (restart && transitions <= 2500) {   // o exe aborta com "State machine stuck in loop" apos 2501 voltas
         restart = false;
         const CnsStatedef* sd = ch_.state(p.stateNo);
         if (!sd) break;
@@ -317,6 +339,7 @@ void Engine::tick(Player& p) {
             if (exec(p, c)) { ++transitions; restart = true; break; }
         }
     }
+    if (restart) p.skipped["state-machine-stuck"]++;
     // 3) fim do tick
     ++p.time;
     ++p.animElapsed;

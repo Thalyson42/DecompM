@@ -48,3 +48,6 @@ A entrada/saída 0 <-> 20 (e agachar 10/12, pular 40/45) é código do exe em `F
 
 ## Movimento embutido portado
 `Engine::default_movement` (porte de FUN_00434db0) roda no início de cada tick. Cobre: 0 <-> 20 (andar), 10/11/12 (agachar), 40 (pular). Faltam guarda automática (120), pulo no ar (45) e os campos +0x248, +0x2B2 e +0x12754 (ver docs/mugen_exe_achados.md).
+
+## Física portada
+`Engine::physics`: pos += vel; atrito S/C; gravidade e pouso (estado 52) em A. Velocidade guardada em coordenada absoluta (VelSet/VelAdd multiplicam pelo lado). Limite de loops da máquina de estados = 2501, como no exe. Detalhes em docs/mugen_exe_achados.md.

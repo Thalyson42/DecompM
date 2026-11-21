@@ -74,6 +74,50 @@ int main(int argc, char** argv) {
     CHECK(back == lt, "deveria voltar ao estado 0 no tick %d (looptime), voltou no tick %d", lt, back);
     CHECK(p.stateNo == 0 && p.ctrl, "depois do golpe: estado 0 com controle (estado=%d ctrl=%d)", p.stateNo, (int)p.ctrl);
 
+    // 5) fisica: andar 10 ticks avanca ~2.4 por tick (pos += vel; o estado 20 refaz o VelSet a cada tick)
+    {
+        Player w; eng.enter_state(w, 0); w.ctrl = true; w.facing = 1;
+        w.commands.insert("holdfwd");
+        for (int i = 0; i < 11; ++i) eng.tick(w);
+        CHECK(w.stateNo == 20, "andando: estado 20, esta em %d", w.stateNo);
+        CHECK(w.posX > 23.5f && w.posX < 24.5f, "10 ticks andando deveriam dar posX ~24.0, deu %f", (double)w.posX);
+        // virado para a esquerda: a velocidade guardada e negativa, mas o trigger "Vel X" continua positivo
+        Player l; eng.enter_state(l, 0); l.ctrl = true; l.facing = -1;
+        l.commands.insert("holdfwd");
+        for (int i = 0; i < 11; ++i) eng.tick(l);
+        CHECK(l.posX < -23.5f && l.posX > -24.5f, "olhando para a esquerda deveria andar para -24, deu %f", (double)l.posX);
+        ExprValue v; std::string err; ExprPtr e = expr_parse("Vel X > 0", &err);
+        struct C : ExprContext {
+            Player& p; C(Player& pp) : p(pp) {}
+            bool call(const std::string& n, const std::vector<ExprValue>&, ExprValue& o) { if (n == "Vel X") { o = ExprValue::Float(p.velX * (float)p.facing); return true; } return false; }
+            bool assign(const std::string&, const std::vector<ExprValue>&, const ExprValue&, ExprValue&) { return false; }
+            bool redirect(const std::string&, const std::vector<ExprValue>&, const ExprNode*, ExprValue&) { return false; }
+        } cc(l);
+        v = expr_eval(e.get(), cc);
+        CHECK(v.kind == ExprValue::INT && v.i == 1, "Vel X relativo ao lado deveria ser > 0");
+    }
+    // 6) pulo completo: sobe, desce e pousa no estado 52 (gravidade = Const(movement.yaccel))
+    {
+        Player j; eng.enter_state(j, 0); j.ctrl = true; j.facing = 1;
+        j.commands.insert("holdup");
+        eng.tick(j);
+        CHECK(j.stateNo == 40, "holdup leva ao estado 40, esta em %d", j.stateNo);
+        j.commands.clear();
+        float minY = 0; int landedAt = -1, tickNo = 1;
+        for (; tickNo < 120; ++tickNo) {
+            eng.tick(j);
+            if (j.posY < minY) minY = j.posY;
+            // o estado 52 pode durar menos de um tick: o common1.cns o encerra no mesmo tick (52 -> 0)
+            if (j.stateNo == 52 || j.prevStateNo == 52) { landedAt = tickNo; break; }
+        }
+        std::printf("pulo: apice=%.1f, pouso no tick %d\n", (double)minY, landedAt);
+        CHECK(landedAt > 30 && landedAt < 60, "o pouso deveria ocorrer entre os ticks 30 e 60, ocorreu em %d", landedAt);
+        CHECK(minY < -70.0f && minY > -90.0f, "apice do pulo do KFM deveria ficar entre -70 e -90, deu %f", (double)minY);
+        for (int i = 0; i < 10 && j.stateNo != 0; ++i) eng.tick(j);
+        CHECK(j.stateNo == 0, "depois do pouso o estado deveria voltar a 0, esta em %d", j.stateNo);
+        CHECK(j.posY > -0.01f && j.posY < 0.01f, "depois do pouso posY deveria ser 0 (PosSet do estado 52), deu %f", (double)j.posY);
+    }
+
     std::printf("controllers/triggers ainda nao implementados encontrados:\n");
     for (std::map<std::string,int>::const_iterator it = p.skipped.begin(); it != p.skipped.end(); ++it)
         std::printf("   %s (%d)\n", it->first.c_str(), it->second);

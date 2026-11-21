@@ -59,3 +59,26 @@ AINDA NÃO portado: guarda automática, pulo no ar, o campo +0x248, o byte +0x2B
 - `FUN_0043c480`: atualização por tick do jogador (física/estado; grava estados 0, 52 e 5120).
 - `FUN_00434030` / `FUN_00434100`: contam jogadores do mesmo time / de outro time (NumPartner / NumEnemy).
 - Tabela de wrappers Lua em 0x004F2208 (ver `docs/trigger_opcodes.md`).
+
+## Física e execução de estados: `FUN_0043c480` (por jogador, por tick)
+Campos (índice de int; offset = índice*4): pos x/y/z = doubles em 0x7E/0x80/0x82; vel x/y/z = doubles em 0x92/0x94/0x96;
+facing = 0x7A; physics = 0x3B8 (1 = S, 2 = C, 3 = A); pausa (hitpause) = 0x3BF; yaccel (float) = 0x4B;
+stand.friction = 0x4C; crouch.friction = 0x4D.
+
+Ordem dentro da função (confirmada no decompilado):
+1. Se a pausa (0x3BF) < 1: `pos += vel` (x, y, z); senão decrementa a pausa. (Há um fator de escala entre localcoords, 1.0 no KFM.)
+2. Física: S → `vel.x *= stand.friction`; C → `vel.x *= crouch.friction`; A → `vel.y += yaccel` e, se `stateno != 105`, `vel.y > 0` e `pos.y > 0`, pousa:
+   `prevstateno = stateno; stateno = 52; Time = 0` (o PosSet y = 0 e o resto vêm do estado 52 do common1.cns).
+3. Executa a máquina de estados (`FUN_0045be80`) em laço enquanto ela devolver "trocou de estado". Limite: 2501 voltas; depois aborta
+   com "State machine stuck in loop (stopped after %i loops): %i for %s / Check your states for infinite ChangeState loops."
+
+**A velocidade guardada é absoluta:** `VelSet` e `VelAdd` (em `FUN_00449020`) multiplicam o valor por `facing` (0x7A) ao gravar,
+e o trigger `Vel X` desfaz isso. Por isso `pos += vel` não multiplica pelo lado.
+
+Constantes: o exe conhece `velocity.jump.y`, `velocity.runjump.y` e `velocity.airjump.y`, que não existem nos .cns. No porte são
+tratadas como o y de `jump.neu`, `runjump.fwd` e `airjump.neu` (SUPOSIÇÃO a confirmar no exe).
+
+Porte: `Engine::physics` e `Engine::tick` (`src/engine/player.cpp`). Testes com o KFM real: 10 ticks andando = 24 px, virado para a
+esquerda = -24 px, pulo com ápice -84.4 e pouso no tick 43 voltando a `posY = 0`.
+Ordem do tick no porte: movimento embutido → física → estados -3/-2/-1 e atual.
+Não portado: hitpause, escala entre localcoords, limiar de atrito do exe, o `z`.

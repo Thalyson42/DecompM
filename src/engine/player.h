@@ -36,6 +36,8 @@ public:
     // Movimento embutido do exe (FUN_00434db0): parado <-> andando (20), agachar (10/11/12), pular (40).
     // Roda no inicio de cada tick, antes dos estados -3/-2/-1 e do estado atual. Veja docs/mugen_exe_achados.md.
     void default_movement(Player& p);
+    // Fisica por tick (parte de FUN_0043c480): pos += vel; depois atrito (S/C) ou gravidade + pouso (A).
+    void physics(Player& p);
     // Soma dos tempos da acao (-1 = infinito, 0 = acao inexistente).
     int anim_looptime(int action) const;
     const Character& character() const { return ch_; }
