@@ -45,3 +45,6 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 
 ## Hipótese do estado 20 confirmada
 A entrada/saída 0 <-> 20 (e agachar 10/12, pular 40/45) é código do exe em `FUN_00434db0`, não dos arquivos .cns/.cmd. Detalhes e offsets do jogador em `docs/mugen_exe_achados.md`.
+
+## Movimento embutido portado
+`Engine::default_movement` (porte de FUN_00434db0) roda no início de cada tick. Cobre: 0 <-> 20 (andar), 10/11/12 (agachar), 40 (pular). Faltam guarda automática (120), pulo no ar (45) e os campos +0x248, +0x2B2 e +0x12754 (ver docs/mugen_exe_achados.md).

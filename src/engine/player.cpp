@@ -246,7 +246,44 @@ bool Engine::exec(Player& p, const CnsController& c) {
     return false;
 }
 
+// Porte de FUN_00434db0 (mugen.exe 1.1b1), parte que escolhe a "intencao" de movimento.
+// Entradas lidas dos comandos padrao holdfwd/holdback/holdup/holddown (o exe le as teclas direto).
+// NAO portado ainda: guarda automatica (intencao 0x28 -> estado 120), pulo no ar (intencao 10 -> estado 45),
+// a limpeza do campo +0x248, o flag +0x2b2 (bloqueio de andar) e a trava de rodada (+0x12754 == 3).
+void Engine::default_movement(Player& p) {
+    bool fwd  = p.commands.count("holdfwd")  != 0;
+    bool back = p.commands.count("holdback") != 0;
+    bool up   = p.commands.count("holdup")   != 0;
+    bool down = p.commands.count("holddown") != 0;
+    int intent = -1;
+    bool keepCrouch = false;
+    if (p.stateType == 'S') {
+        if (fwd != back) intent = 1;     // so uma direcao horizontal: andar
+        if (down) intent = 11;           // 0xb: agachar (sobrepoe andar)
+        if (up)   intent = 7;            // pular (sobrepoe agachar)
+    }
+    if (p.stateType == 'C' && down) keepCrouch = true;
+    if (fwd && back) intent = -1;        // as duas direcoes juntas cancelam qualquer intencao
+    bool handled = false;
+    if (intent == 11) {
+        if (p.ctrl && p.stateNo != 10 && p.stateNo != 11) enter_state(p, 10);
+        handled = true;
+    } else if (intent == 1) {
+        if (p.ctrl && p.stateNo != 20) enter_state(p, 20);
+        handled = true;
+    } else if (intent == 7) {
+        if (p.ctrl) enter_state(p, 40);
+        handled = true;
+    }
+    if (handled) return;
+    // Sem intencao tratada: andando volta para o estado 0 (so troca os campos, sem validar o estado)
+    if (p.stateNo == 20) { p.prevStateNo = 20; p.stateNo = 0; p.time = 0; p.persist.clear(); }
+    // Agachado, com controle e sem segurar para baixo: levantar (estado 12)
+    if (p.stateType == 'C' && p.ctrl && !keepCrouch) enter_state(p, 12);
+}
+
 void Engine::tick(Player& p) {
+    default_movement(p);
     // 1) estados especiais -3, -2, -1: uma passada; ChangeState aborta so o restante daquele estado
     for (int sn = -3; sn <= -1; ++sn) {
         const CnsStatedef* sd = ch_.state(sn);

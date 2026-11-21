@@ -33,6 +33,9 @@ public:
     bool enter_state(Player& p, int stateNo);
     // Um tick: estados -3, -2, -1, depois o estado atual; no fim avanca Time e a animacao.
     void tick(Player& p);
+    // Movimento embutido do exe (FUN_00434db0): parado <-> andando (20), agachar (10/11/12), pular (40).
+    // Roda no inicio de cada tick, antes dos estados -3/-2/-1 e do estado atual. Veja docs/mugen_exe_achados.md.
+    void default_movement(Player& p);
     // Soma dos tempos da acao (-1 = infinito, 0 = acao inexistente).
     int anim_looptime(int action) const;
     const Character& character() const { return ch_; }

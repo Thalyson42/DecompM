@@ -24,14 +24,36 @@ Tudo aqui vem de ler o decompilado/assembly; confira antes de tratar como defini
 Faz: `prev = stateno; stateno = EAX; Time = 0;` e valida o estado. Mensagem: "changed to invalid state %i (from state %i)".
 O Ghidra esconde o argumento (registrador). 32 chamadas; valores literais vistos: 10, 11, 12, 40, 45, 51, 120, 180, 5030, 5120.
 
-## Movimento "embutido": `FUN_00434db0` (resolve a hipótese do estado 20)
-O parado/andando/agachado/pulo NÃO está nos .cns/.cmd: está nesta função, que também atualiza o buffer de comandos.
-- Ela calcula uma "intenção" de entrada (variável `param_1`): 1 = frente, 7, 10/11 = agachar, 0x28 = pular, 900...
-- Entra no estado 20 se `ctrl != 0`, a intenção é 1 e o estado atual não é 20.
-- No fim: se `stateno == 20` (andando) e a condição de andar não vale, volta a `stateno = 0`, `Time = 0`.
-- Agachado (`statetype == 2`) com ctrl e sem a intenção de agachar: troca de estado (provavelmente 12, agachado → de pé).
-- Chamadas literais para 10, 12, 40, 45 e 120 ficam em 0x4353B9–0x435557.
-- AINDA NÃO entendido: como a intenção (`param_1`) é calculada a partir dos botões; o que são as intenções 7 e 900.
+## Movimento "embutido": `FUN_00434db0` (chamada de `FUN_00413170`, o loop principal do frame)
+O parado/andando/agachado/pulo NÃO está nos .cns/.cmd: está nesta função, que roda para cada jogador **antes** de
+`FUN_0043c480` (atualização do jogador). Ela também atualiza o buffer de comandos.
+
+Entradas: quatro flags em +0x390, +0x394, +0x398 e +0x39c (provavelmente cima, uma horizontal, baixo e a outra horizontal;
++0x39c parece ser "trás", pela guarda) e `statetype` (+0xED8: 1 = S, 2 = C, 3 = A).
+
+Cálculo da "intenção" (`param_1`), confirmado no assembly (0x435340–0x435570):
+| Intenção | Quando | Efeito (exige `ctrl` salvo indicação) |
+|---|---|---|
+| 1 | em pé e exatamente uma direção horizontal | entra no **estado 20** se `stateno != 20` e o byte +0x2B2 == 0 |
+| 0xB | em pé e baixo (sobrepõe 1) | **estado 10** se `stateno` não é 10 nem 11 |
+| 7 | em pé e cima (sobrepõe as anteriores) | **estado 40** (se o campo global +0x12754 != 3) |
+| 10 | no ar e máscara de teclas == 1 | **estado 45** (pulo no ar), gasta um pulo (+0x278) |
+| 0x28 | inimigo atacando perto e segurando "trás" | **estado 120** (guarda) |
+| 900 | (não entendido) | chama FUN_0043C460 / FUN_0043C220 |
+As duas direções horizontais juntas anulam qualquer intenção (`param_1 = -1`).
+
+Sem intenção tratada, no fim da função:
+1. `stateno == 20` → `prevstateno = 20; stateno = 0; Time = 0` (sem chamar a função de troca de estado).
+2. `statetype == 2` (agachado) com `ctrl` e sem segurar baixo → **estado 12** (agachado → de pé).
+
+Chamadas literais da função de troca (EAX): 45 (0x4353B2), 40 (0x4353E7), 20 (0x435411), 10 (0x43545F), 12 (0x4354C3), 120 (0x435550).
+Porte em `Engine::default_movement` (`src/engine/player.cpp`); testado com o KFM real em `tests/engine_kfm_test.cpp`
+(0 → 20 → 0, frente+trás não anda, baixo → 10 → 11, soltar → 12 → 0, cima → 40).
+AINDA NÃO portado: guarda automática, pulo no ar, o campo +0x248, o byte +0x2B2 e a trava +0x12754.
+
+## Ordem do frame (`FUN_00413170`)
+... `FUN_00413e60` (fim de rodada: estados 170/175/180) → `FUN_0043c390` → **`FUN_00434db0` (movimento embutido)** →
+`FUN_0043c480` (atualização do jogador) → `FUN_0043d650` → ... → `FUN_0043d950` (→ `FUN_0043fd80`, colisão/hits).
 
 ## Outras funções identificadas
 - `FUN_0043c480`: atualização por tick do jogador (física/estado; grava estados 0, 52 e 5120).

@@ -25,18 +25,39 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 30; ++i) eng.tick(p);
     CHECK(p.stateNo == 0, "sem comandos deveria continuar no estado 0, esta em %d", p.stateNo);
 
-    // 2) andar (estado 20): a ENTRADA no estado 20 nao esta em nenhum .cns/.cmd do KFM (so ChangeAnim e VelSet),
-    //    entao provavelmente e embutida no mugen.exe; a localizar no Ghidra. Aqui entramos no 20 direto.
-    CHECK(eng.enter_state(p, 20), "estado 20 deve existir");
+    // 2) andar: o movimento embutido do exe (FUN_00434db0) leva 0 -> 20 ao segurar para frente
     p.commands.insert("holdfwd");
     eng.tick(p);
+    CHECK(p.stateNo == 20, "holdfwd deveria levar ao estado 20, esta em %d", p.stateNo);
     CHECK(p.velX > 2.3f && p.velX < 2.5f, "velocidade de andar deveria ser Const(velocity.walk.fwd.x)=2.4, veio %f", (double)p.velX);
     CHECK(p.anim == 20, "andando para frente usa a animacao 20, veio %d", p.anim);
-    // 3) a SAIDA do estado 20 tambem nao esta nos arquivos (nenhum ChangeState para fora dele): o 0 <-> 20
-    //    (parado/andando) parece ser logica embutida no mugen.exe. Aqui voltamos ao estado 0 manualmente.
+    // 3) solta o botao: volta ao estado 0
     p.commands.clear();
     eng.tick(p);
-    CHECK(p.stateNo == 20, "sem codigo embutido, o estado 20 nao sai sozinho (esta em %d)", p.stateNo);
+    CHECK(p.stateNo == 0, "sem direcao o estado 20 deveria voltar ao 0, esta em %d", p.stateNo);
+    // as duas direcoes juntas nao fazem nada
+    p.commands.insert("holdfwd"); p.commands.insert("holdback");
+    eng.tick(p);
+    CHECK(p.stateNo == 0, "frente+tras nao deveria andar, esta em %d", p.stateNo);
+    p.commands.clear();
+    // agachar: down leva ao 10; ao soltar, levanta pelo 12
+    p.commands.insert("holddown");
+    eng.tick(p);
+    CHECK(p.stateNo == 10, "holddown deveria levar ao estado 10, esta em %d", p.stateNo);
+    CHECK(p.stateType == 'C', "estado 10 e agachado (C), veio %c", p.stateType);
+    for (int i = 0; i < 20; ++i) eng.tick(p);              // segura: ele termina em 11 (agachado)
+    CHECK(p.stateNo == 11, "segurando down o agachar deveria terminar no estado 11, esta em %d", p.stateNo);
+    p.commands.clear();
+    eng.tick(p);
+    CHECK(p.stateNo == 12, "soltando down deveria ir ao estado 12, esta em %d", p.stateNo);
+    for (int i = 0; i < 30 && p.stateNo != 0; ++i) eng.tick(p);
+    CHECK(p.stateNo == 0, "o 12 deveria terminar no estado 0, esta em %d", p.stateNo);
+    p.ctrl = true;
+    // pular: up leva ao 40
+    p.commands.insert("holdup");
+    eng.tick(p);
+    CHECK(p.stateNo == 40, "holdup deveria levar ao estado 40, esta em %d", p.stateNo);
+    p.commands.clear();
     CHECK(eng.enter_state(p, 0), "estado 0 deve existir");
     p.ctrl = true;
 
