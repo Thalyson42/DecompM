@@ -12,7 +12,7 @@ O autor original abandonou o projeto; hoje só a comunidade usa a ferramenta.
 |---|---|---|
 | Utilitários (sff2png, sprmake2, sndmaker) | `src/tools` | não iniciado |
 | Formato SFF | `src/sff` | v1 e v2 mapeados; RLE8 e LZ5 decodificados (extração v2 para PNG funcionando); falta v1, RLE5, raw e PNG |
-| Parsers DEF/CNS/AIR/CMD | `src/parser` | INI genérico, AIR e CNS/CMD (estrutura) prontos; falta avaliar expressões (triggers) |
+| Parsers DEF/CNS/AIR/CMD + expressões | `src/parser` | INI, AIR, CNS/CMD e expressões (parser + avaliador) prontos; falta ligar ao motor (triggers reais) |
 | Estados, controllers, colisão | `src/engine` | não iniciado |
 | Renderização OpenGL | `src/render` | não iniciado |
 | Chamadas à API Lua | `src/lua_bind` | não iniciado |

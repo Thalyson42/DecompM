@@ -12,10 +12,11 @@ target_include_directories(decompm_sff PUBLIC src)
 
 add_library(decompm_parser src/parser/ini_parser.h src/parser/ini_parser.cpp
             src/parser/air_parser.h src/parser/air_parser.cpp
-            src/parser/cns_parser.h src/parser/cns_parser.cpp src/parser/cns_controllers.h)
+            src/parser/cns_parser.h src/parser/cns_parser.cpp src/parser/cns_controllers.h
+            src/parser/expr.h src/parser/expr.cpp)
 target_include_directories(decompm_parser PUBLIC src)
 
-foreach(t defdump airdump cnsdump)
+foreach(t defdump airdump cnsdump exprcheck)
   add_executable(${t} src/tools/${t}.cpp)
   target_link_libraries(${t} decompm_parser)
 endforeach()
@@ -24,3 +25,8 @@ foreach(t sff2png sprmake2 sndmaker)
   add_executable(${t} src/tools/${t}.cpp)
   target_link_libraries(${t} decompm_sff)
 endforeach()
+
+enable_testing()
+add_executable(expr_spec_tests tests/expr_spec_tests.cpp)
+target_link_libraries(expr_spec_tests decompm_parser)
+add_test(NAME expr_spec_tests COMMAND expr_spec_tests)

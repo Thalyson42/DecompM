@@ -23,3 +23,9 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 - Todos os `type` usados são controllers da lista oficial (89 nomes, docs/sctrls.html); todo controller tem trigger1 e não há lacunas de numeração.
 - O parser é só estrutural: triggers e parâmetros ficam como texto. Próximo passo: tokenizer/avaliador de expressões.
 - Regras de trigger seguidas da documentação: triggerall = AND com tudo; triggerN = grupos em OR; lacuna em N faz os seguintes serem ignorados.
+
+## Notas de formato (expressões, validadas nos arquivos do MUGEN 1.1b1)
+- `tests/expr_spec_tests.cpp`: 38 testes, baseados nos exemplos de docs/cns.html (precedência, divisão inteira, `**`, intervalos, `:=`, bottom).
+- Erro na documentação: o exemplo `1.0 = (2 = (1 > 0) + !(0 < 1))` diz que `0 < 1` vale 0 e conclui 1; pelas regras o resultado é 0. O comportamento real do mugen.exe precisa ser conferido no Ghidra.
+- `exprcheck` em kfm.cns, kfm720.cns, common1.cns e kfm.cmd: todos os triggers fazem parse (0 falhas). Falham só 5 parâmetros que NÃO são expressões aritméticas, e sim listas de atributos/flags que cada controller interpreta à sua maneira: `hitflag = M-` e `value = , NA, NP` (HitBy/NotHitBy). Precisam de parsers por controller.
+- Limitações conhecidas do avaliador: exceções do "bottom" em `&&`/`||` ainda não tratadas; redirecionamento, triggers e variáveis dependem de um `ExprContext` (ainda sem implementação real).
