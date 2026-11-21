@@ -17,3 +17,9 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 - kfm.air e kfm720.air: 117 ações e 655 elementos cada; fightfx.air: 19 ações e 158 elementos (contagem independente bate).
 - As ações 5, 6, 10 e 12 do KFM têm looptime finito, como exige a documentação.
 - Quirk do KFM (3 blocos, 5 linhas: 963, 1567, 1568, 1574 e 1575): bloco "Clsn1: N" seguido de linhas "Clsn2[i] = ...". O parser assume que a caixa pertence ao bloco declarado. CONFIRMAR no mugen.exe.
+
+## Notas de formato (CNS/CMD, validadas nos arquivos do MUGEN 1.1b1)
+- Contagens batem com `grep` independente: kfm.cns 58 Statedef + 318 controllers, common1.cns 51 + 282, kfm.cmd 1 + 38.
+- Todos os `type` usados são controllers da lista oficial (89 nomes, docs/sctrls.html); todo controller tem trigger1 e não há lacunas de numeração.
+- O parser é só estrutural: triggers e parâmetros ficam como texto. Próximo passo: tokenizer/avaliador de expressões.
+- Regras de trigger seguidas da documentação: triggerall = AND com tudo; triggerN = grupos em OR; lacuna em N faz os seguintes serem ignorados.

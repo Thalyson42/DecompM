@@ -11,10 +11,11 @@ add_library(decompm_sff src/sff/sff_format.h src/sff/sff_reader.cpp src/sff/sff_
 target_include_directories(decompm_sff PUBLIC src)
 
 add_library(decompm_parser src/parser/ini_parser.h src/parser/ini_parser.cpp
-            src/parser/air_parser.h src/parser/air_parser.cpp)
+            src/parser/air_parser.h src/parser/air_parser.cpp
+            src/parser/cns_parser.h src/parser/cns_parser.cpp src/parser/cns_controllers.h)
 target_include_directories(decompm_parser PUBLIC src)
 
-foreach(t defdump airdump)
+foreach(t defdump airdump cnsdump)
   add_executable(${t} src/tools/${t}.cpp)
   target_link_libraries(${t} decompm_parser)
 endforeach()
