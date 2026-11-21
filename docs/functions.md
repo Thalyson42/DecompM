@@ -33,7 +33,7 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 ## Motor de estados (src/engine), validado com o KFM real
 - Ordem por tick (docs/cns.html): estados -3, -2, -1 (ChangeState aborta só o restante do estado), depois o estado atual; após ChangeState no estado atual, recomeça do início do novo estado. No fim: Time++ e avanço da animação.
 - `tests/engine_kfm_test.cpp` (precisa do MUGEN local, `-DMUGEN_DIR=...`): o comando `x` leva ao estado 200 (kfm.cmd) e o personagem volta ao estado 0 exatamente no tick = looptime da anim 200 (12). É consistência interna, não comparação com o mugen.exe.
-- **Achado:** não existe nenhum `ChangeState` para o estado 20 (andar) nem para fora dele em common1.cns, kfm.cns ou kfm.cmd. A entrada/saída 0 <-> 20 (e provavelmente agachar 10 e pular 40) parece ser lógica embutida no mugen.exe. LOCALIZAR NO GHIDRA (hipótese, ainda não confirmada).
+- **Achado (RESOLVIDO, ver `docs/mugen_exe_achados.md`):** não existe nenhum `ChangeState` para o estado 20 (andar) nem para fora dele em common1.cns, kfm.cns ou kfm.cmd. A entrada/saída 0 <-> 20 (e provavelmente agachar 10 e pular 40) parece ser lógica embutida no mugen.exe. LOCALIZAR NO GHIDRA (hipótese, ainda não confirmada).
 - Constantes: `Const(velocity.walk.fwd.x)` = 2.4 resolvido a partir de [Velocity] do kfm.cns.
 - Não implementados ainda (contados em `Player::skipped`): triggers AnimElem e MoveContact, controller PlaySnd e todo o resto (HitDef, Helper, Explod...). Sem física (gravidade, atrito), colisão ou hits.
 - Suposições a confirmar no exe: concatenação de estados -1/-2/-3 de vários arquivos; semântica de `persistent = n`; AnimTime = tempo decorrido - looptime; AnimTime com looptime infinito (provisório -1).
@@ -42,3 +42,6 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 - Tokenizer de expressões: cadeia de `stricmp` de ~114 nomes de trigger → opcode, todos retornando por `0x00454AA0`. Tabela completa em `docs/trigger_opcodes.md` (script: `tools/analise/extrair_triggers.py`).
 - Tabela de wrappers Lua em `0x004F2208` (88 entradas nome → função): API de scripts do 1.1, não é a tabela do CNS.
 - Próximo alvo: achar o despacho por opcode (onde `ctrl` = 47 e `statetype` = 43 são calculados) e a lógica embutida de 0 <-> 20.
+
+## Hipótese do estado 20 confirmada
+A entrada/saída 0 <-> 20 (e agachar 10/12, pular 40/45) é código do exe em `FUN_00434db0`, não dos arquivos .cns/.cmd. Detalhes e offsets do jogador em `docs/mugen_exe_achados.md`.

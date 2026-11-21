@@ -14,3 +14,12 @@ font/
 *.obj
 .vs/
 .vscode/
+
+# Saidas de decompilacao do exe original (derivadas do binario protegido por copyright): NAO versionar
+mugen_decomp.c
+mugen_all.c
+*_decomp.c
+*_all.c
+ghidra_out/
+*.gpr
+*.rep/
