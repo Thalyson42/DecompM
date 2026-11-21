@@ -10,11 +10,14 @@ add_library(decompm_sff src/sff/sff_format.h src/sff/sff_reader.cpp src/sff/sff_
             src/sff/png_writer.cpp src/sff/sff_extract.cpp)
 target_include_directories(decompm_sff PUBLIC src)
 
-add_library(decompm_parser src/parser/ini_parser.h src/parser/ini_parser.cpp)
+add_library(decompm_parser src/parser/ini_parser.h src/parser/ini_parser.cpp
+            src/parser/air_parser.h src/parser/air_parser.cpp)
 target_include_directories(decompm_parser PUBLIC src)
 
-add_executable(defdump src/tools/defdump.cpp)
-target_link_libraries(defdump decompm_parser)
+foreach(t defdump airdump)
+  add_executable(${t} src/tools/${t}.cpp)
+  target_link_libraries(${t} decompm_parser)
+endforeach()
 
 foreach(t sff2png sprmake2 sndmaker)
   add_executable(${t} src/tools/${t}.cpp)

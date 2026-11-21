@@ -12,3 +12,8 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 - Sprite com dataLength == 0 é linkado: usa os dados do sprite em linkedIndex.
 - Paleta: 4 bytes por cor (RGBA), offset relativo a ldata; índice 0 tratado como transparente.
 - Os decodificadores seguem o algoritmo documentado pela comunidade e foram validados pela saída; ainda falta comparar com as funções do sff2png.exe no Ghidra.
+
+## Notas de formato (AIR, validadas nos .air do MUGEN 1.1b1)
+- kfm.air e kfm720.air: 117 ações e 655 elementos cada; fightfx.air: 19 ações e 158 elementos (contagem independente bate).
+- As ações 5, 6, 10 e 12 do KFM têm looptime finito, como exige a documentação.
+- Quirk do KFM (3 blocos, 5 linhas: 963, 1567, 1568, 1574 e 1575): bloco "Clsn1: N" seguido de linhas "Clsn2[i] = ...". O parser assume que a caixa pertence ao bloco declarado. CONFIRMAR no mugen.exe.
