@@ -1,0 +1,16 @@
+build/
+original/
+*.exe
+*.dll
+*.sff
+*.snd
+*.gpr
+*.gzf
+chars/
+stages/
+sound/
+font/
+*.o
+*.obj
+.vs/
+.vscode/
