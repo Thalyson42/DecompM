@@ -37,3 +37,8 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 - Constantes: `Const(velocity.walk.fwd.x)` = 2.4 resolvido a partir de [Velocity] do kfm.cns.
 - Não implementados ainda (contados em `Player::skipped`): triggers AnimElem e MoveContact, controller PlaySnd e todo o resto (HitDef, Helper, Explod...). Sem física (gravidade, atrito), colisão ou hits.
 - Suposições a confirmar no exe: concatenação de estados -1/-2/-3 de vários arquivos; semântica de `persistent = n`; AnimTime = tempo decorrido - looptime; AnimTime com looptime infinito (provisório -1).
+
+## Análise do mugen.exe feita por script (sem Ghidra)
+- Tokenizer de expressões: cadeia de `stricmp` de ~114 nomes de trigger → opcode, todos retornando por `0x00454AA0`. Tabela completa em `docs/trigger_opcodes.md` (script: `tools/analise/extrair_triggers.py`).
+- Tabela de wrappers Lua em `0x004F2208` (88 entradas nome → função): API de scripts do 1.1, não é a tabela do CNS.
+- Próximo alvo: achar o despacho por opcode (onde `ctrl` = 47 e `statetype` = 43 são calculados) e a lógica embutida de 0 <-> 20.

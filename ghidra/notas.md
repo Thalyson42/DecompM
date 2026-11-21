@@ -9,3 +9,6 @@
    - Lua 5.1.4 está linkado estaticamente (procure a string "$Lua: Lua 5.1.4")
 4. Marque as funções do Lua como `biblioteca` em `docs/functions.md` e foque no resto.
 5. Dicas: strings como "Error initializing lua state", "[Statedef", "[State " e nomes de controllers (ChangeState, VarSet...) levam às tabelas de dispatch.
+
+## Sem Ghidra
+Boa parte da análise inicial pode ser feita por script (capstone + pefile). Veja `tools/analise/` e `docs/trigger_opcodes.md`.
