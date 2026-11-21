@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # O original é x86 de 32 bits. Para comparar layout de structs,
 # prefira compilar em 32 bits (-m32 ou generator "Visual Studio -A Win32").
 
-add_library(decompm_sff src/sff/sff_format.h src/sff/sff_reader.cpp)
+add_library(decompm_sff src/sff/sff_format.h src/sff/sff_reader.cpp src/sff/sff_decode.cpp
+            src/sff/png_writer.cpp src/sff/sff_extract.cpp)
 target_include_directories(decompm_sff PUBLIC src)
 
 foreach(t sff2png sprmake2 sndmaker)
