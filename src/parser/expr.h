@@ -54,6 +54,9 @@ struct ExprContext {
     virtual bool call(const std::string& name, const std::vector<ExprValue>& args, ExprValue& out) = 0;
     // Atribuicao "var(n) := valor" / "fvar(n) := valor".
     virtual bool assign(const std::string& name, const std::vector<ExprValue>& args, const ExprValue& v, ExprValue& out) = 0;
+    // Comparacao "Nome = \"texto\"" (ex.: Command = "holdfwd"). Se retornar true, 'out' e o resultado (0/1) de "=".
+    // O avaliador inverte o resultado para "!=". Se retornar false, cai na comparacao normal.
+    virtual bool call_eq_str(const std::string&, const std::vector<ExprValue>&, const std::string&, ExprValue&) { return false; }
     // Redirecionamento: avalia 'inner' no contexto de outro personagem. Retorne false se nao existir.
     virtual bool redirect(const std::string& name, const std::vector<ExprValue>& args,
                           const ExprNode* inner, ExprValue& out) = 0;

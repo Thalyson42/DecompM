@@ -29,3 +29,11 @@ Status: `conhecido` (nome certo) / `rascunho` (comportamento ok, código não) /
 - Erro na documentação: o exemplo `1.0 = (2 = (1 > 0) + !(0 < 1))` diz que `0 < 1` vale 0 e conclui 1; pelas regras o resultado é 0. O comportamento real do mugen.exe precisa ser conferido no Ghidra.
 - `exprcheck` em kfm.cns, kfm720.cns, common1.cns e kfm.cmd: todos os triggers fazem parse (0 falhas). Falham só 5 parâmetros que NÃO são expressões aritméticas, e sim listas de atributos/flags que cada controller interpreta à sua maneira: `hitflag = M-` e `value = , NA, NP` (HitBy/NotHitBy). Precisam de parsers por controller.
 - Limitações conhecidas do avaliador: exceções do "bottom" em `&&`/`||` ainda não tratadas; redirecionamento, triggers e variáveis dependem de um `ExprContext` (ainda sem implementação real).
+
+## Motor de estados (src/engine), validado com o KFM real
+- Ordem por tick (docs/cns.html): estados -3, -2, -1 (ChangeState aborta só o restante do estado), depois o estado atual; após ChangeState no estado atual, recomeça do início do novo estado. No fim: Time++ e avanço da animação.
+- `tests/engine_kfm_test.cpp` (precisa do MUGEN local, `-DMUGEN_DIR=...`): o comando `x` leva ao estado 200 (kfm.cmd) e o personagem volta ao estado 0 exatamente no tick = looptime da anim 200 (12). É consistência interna, não comparação com o mugen.exe.
+- **Achado:** não existe nenhum `ChangeState` para o estado 20 (andar) nem para fora dele em common1.cns, kfm.cns ou kfm.cmd. A entrada/saída 0 <-> 20 (e provavelmente agachar 10 e pular 40) parece ser lógica embutida no mugen.exe. LOCALIZAR NO GHIDRA (hipótese, ainda não confirmada).
+- Constantes: `Const(velocity.walk.fwd.x)` = 2.4 resolvido a partir de [Velocity] do kfm.cns.
+- Não implementados ainda (contados em `Player::skipped`): triggers AnimElem e MoveContact, controller PlaySnd e todo o resto (HitDef, Helper, Explod...). Sem física (gravidade, atrito), colisão ou hits.
+- Suposições a confirmar no exe: concatenação de estados -1/-2/-3 de vários arquivos; semântica de `persistent = n`; AnimTime = tempo decorrido - looptime; AnimTime com looptime infinito (provisório -1).

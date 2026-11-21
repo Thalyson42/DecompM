@@ -359,6 +359,14 @@ ExprValue expr_eval(const ExprNode* n, ExprContext& ctx) {
             if (!ctx.assign(l->str, args, r, out)) return V::Bottom();
             return out;
         }
+        if ((op == "=" || op == "!=") && n->kids[0]->type == N::CALL && n->kids[1]->type == N::STRING) {
+            const N* l = n->kids[0].get();
+            std::vector<V> args;
+            for (size_t i = 0; i < l->kids.size(); ++i) args.push_back(expr_eval(l->kids[i].get(), ctx));
+            V out;
+            if (ctx.call_eq_str(l->str, args, n->kids[1]->str, out) && out.kind == V::INT)
+                return V::Int(op == "=" ? out.i : (out.i ? 0 : 1));
+        }
         V a = expr_eval(n->kids[0].get(), ctx), b = expr_eval(n->kids[1].get(), ctx);
         if (op == "+" || op == "-" || op == "*" || op == "/" || op == "%" || op == "**") return arith(op, a, b);
         if (op == "&&" || op == "||" || op == "^^") {

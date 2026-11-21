@@ -26,7 +26,18 @@ foreach(t sff2png sprmake2 sndmaker)
   target_link_libraries(${t} decompm_sff)
 endforeach()
 
+add_library(decompm_engine src/engine/character.h src/engine/character.cpp src/engine/player.h src/engine/player.cpp)
+target_link_libraries(decompm_engine decompm_parser)
+target_include_directories(decompm_engine PUBLIC src)
+
 enable_testing()
 add_executable(expr_spec_tests tests/expr_spec_tests.cpp)
 target_link_libraries(expr_spec_tests decompm_parser)
 add_test(NAME expr_spec_tests COMMAND expr_spec_tests)
+
+# Teste de integracao com o KFM real (precisa da sua copia do MUGEN): cmake -DMUGEN_DIR=/caminho/mugen-1.1b1
+if(MUGEN_DIR)
+  add_executable(engine_kfm_test tests/engine_kfm_test.cpp)
+  target_link_libraries(engine_kfm_test decompm_engine)
+  add_test(NAME engine_kfm_test COMMAND engine_kfm_test ${MUGEN_DIR})
+endif()
