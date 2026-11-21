@@ -11,7 +11,7 @@ O autor original abandonou o projeto; hoje só a comunidade usa a ferramenta.
 | Módulo | Pasta | Status |
 |---|---|---|
 | Utilitários (sff2png, sprmake2, sndmaker) | `src/tools` | não iniciado |
-| Formato SFF | `src/sff` | cabeçalho v1 rascunhado |
+| Formato SFF | `src/sff` | cabeçalhos v1 e v2 mapeados (falta decodificar RLE8/LZ5) |
 | Parsers DEF/CNS/AIR/CMD | `src/parser` | não iniciado |
 | Estados, controllers, colisão | `src/engine` | não iniciado |
 | Renderização OpenGL | `src/render` | não iniciado |
