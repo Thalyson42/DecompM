@@ -155,3 +155,18 @@ Ordem em `FUN_0043D950` (leitura do decompilado):
   e há oponente atacando (movetype A) ANTES de checar a distância; (b) na intenção 0x28 (movetype I com controle); (c) em `FUN_0043F990` (golpe guardado).
 Isso substitui a suposição anterior ("estado entre 120 e 155"). O porte usa `Player::guarding`.
 Ainda aberto: o significado exato de `FUN_00441200` (porte usa guardflag H/L/M/A contra o statetype), o byte +0x2B3, a chip-kill e as tabelas de HitBy/NotHitBy (loop em defensor+0x1180).
+
+## Empurrão entre corpos e limites (src/engine/world.*): PORTE EXATO da aritmética do exe
+Funções: `FUN_0043DE40` (decide), `FUN_0043DF60` (empurra; aritmética lida no assembly 0x43E03F–0x43E273), `FUN_0043D8C0` (limite do cenário),
+`FUN_0043D750` (limite da tela, NÃO portado). Roda para cada par de times diferentes, ANTES da detecção de hits.
+- Só empurra se os dois têm o flag +0x298 (empurrar), as caixas **Clsn2** dos dois se sobrepõem e o flag global +0x11F78 != 1 (ou os dois têm +0x3C0).
+- Quem está em pé (statetype S) e tem o oponente acima da própria altura (`size.height`, 60 no KFM) não empurra (passou por cima).
+- Ordem esquerda/direita: menor x fica à esquerda; em empate de x vale o lado para onde olham e o movetype (A) / statetype (ar).
+- Largura de cada um = `floor((extra + tamanho) * escala + 0.5)`; tamanho = size.ground.front/back ou size.air.front/back, usando "frente" se o jogador
+  da esquerda olha para a direita (e o da direita olha para a esquerda). `extra` vem do controller Width (campos +0x2A4/+0x2A8; NÃO portado, vale 0).
+- `diff = R.x - L.x`. Se `diff < 10*G/320` (quase no mesmo lugar) recentra: `L.x = meio - 5*G/320`, `R.x = meio + 5*G/320`.
+  Depois, se `larguraL + larguraR > diff` (usando o `diff` ORIGINAL, sem recalcular), cada um recua `(soma - diff)/2`.
+  `G` é um double global (`[0x5040E8]+0x12888`) ainda não identificado; o porte assume G = 320 (limiar 10, meia-separação 5).
+- Limite do cenário: `x` preso a [boundleft, boundright] (escalado) — campos de cenário +0x1E3C/+0x1E40.
+Testes (dois KFM): a 20 px afastam para 32 (−6/+26); no mesmo x ficam em −21/+21 (efeito do `diff` original, como no exe);
+pulando por cima não empurra; o limite do cenário segura o jogador.

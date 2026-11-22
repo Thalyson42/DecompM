@@ -1,6 +1,6 @@
 // Teste de combate com o KFM real (dois KFM). Uso: combat_kfm_test <pasta-do-mugen>
 // Baseado na documentacao; os valores NAO foram comparados com o mugen.exe.
-#include "engine/combat.h"
+#include "engine/world.h"
 #include <cstdio>
 #include <string>
 
@@ -167,6 +167,41 @@ int main(int argc, char** argv) {
         d.p2.moveType = 'I';
         d.e2.tick(d.p2);
         CHECK(d.p2.guarding, "o flag de guarda vale com oponente atacando, mesmo fora do estado 120");
+    }
+    // L) empurrao: corpos sobrepostos sao afastados pela soma das larguras (16 + 16 = 32), meio a meio
+    {
+        Duel d(ch, 20);
+        World w;
+        step_frame(d.p1, d.e1, d.p2, d.e2, w);
+        float dist = d.p2.posX - d.p1.posX;
+        std::printf("L) distancia depois do empurrao: %.1f (p1.x=%.1f p2.x=%.1f)\n", (double)dist, (double)d.p1.posX, (double)d.p2.posX);
+        CHECK(dist > 31.9f && dist < 32.1f, "a distancia deveria ficar 32 (16+16), ficou %f", (double)dist);
+        CHECK(d.p1.posX < -5.9f && d.p1.posX > -6.1f && d.p2.posX > 25.9f && d.p2.posX < 26.1f, "cada um recua 6 px (p1=%f p2=%f)", (double)d.p1.posX, (double)d.p2.posX);
+        // sem sobreposicao: nada muda
+        Duel e(ch, 40);
+        step_frame(e.p1, e.e1, e.p2, e.e2, w);
+        CHECK(e.p1.posX == 0.0f && e.p2.posX == 40.0f, "a 40 px nao ha empurrao (p1=%f p2=%f)", (double)e.p1.posX, (double)e.p2.posX);
+    }
+    // M) mesmo x (distancia < 10): recentra em +-5 e depois empurra pela soma das larguras menos a distancia original
+    {
+        Duel d(ch, 0);
+        World w;
+        step_frame(d.p1, d.e1, d.p2, d.e2, w);
+        std::printf("M) mesmo x: p1.x=%.1f p2.x=%.1f\n", (double)d.p1.posX, (double)d.p2.posX);
+        CHECK(d.p1.posX < d.p2.posX, "p1 (olhando para a direita) deveria ficar a esquerda");
+        CHECK(d.p1.posX < -20.9f && d.p1.posX > -21.1f && d.p2.posX > 20.9f && d.p2.posX < 21.1f, "no mesmo x: -5-16 e +5+16 (p1=%f p2=%f)", (double)d.p1.posX, (double)d.p2.posX);
+    }
+    // N) pular por cima nao empurra; limites do cenario seguram o jogador
+    {
+        Duel d(ch, 20);
+        d.p1.posY = -100.0f; d.p1.stateType = 'A'; d.p1.physics = 'N';   // p1 bem acima da altura (60) de p2, em pe
+        World w;
+        push_players(d.p1, d.e1, d.p2, d.e2);
+        CHECK(d.p1.posX == 0.0f && d.p2.posX == 20.0f, "pulando por cima nao ha empurrao (p1=%f p2=%f)", (double)d.p1.posX, (double)d.p2.posX);
+        Duel e(ch, 20);
+        World wall; wall.stageLeft = -3.0f; wall.stageRight = 100.0f;
+        step_frame(e.p1, e.e1, e.p2, e.e2, wall);
+        CHECK(e.p1.posX == -3.0f, "o limite do cenario segura p1 em -3 (p1=%f)", (double)e.p1.posX);
     }
     std::printf(fails ? "%d falha(s)\n" : "tudo certo\n", fails);
     return fails ? 1 : 0;

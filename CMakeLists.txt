@@ -27,7 +27,8 @@ foreach(t sff2png sprmake2 sndmaker)
 endforeach()
 
 add_library(decompm_engine src/engine/character.h src/engine/character.cpp src/engine/player.h src/engine/player.cpp
-            src/engine/combat.h src/engine/combat.cpp)
+            src/engine/combat.h src/engine/combat.cpp
+            src/engine/world.h src/engine/world.cpp)
 target_link_libraries(decompm_engine decompm_parser)
 target_include_directories(decompm_engine PUBLIC src)
 

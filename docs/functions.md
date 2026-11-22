@@ -57,3 +57,6 @@ A entrada/saída 0 <-> 20 (e agachar 10/12, pular 40/45) é código do exe em `F
 
 ## Guarda portada
 InGuardDist (FUN_004347a0), intenção de guarda 0x28 em `default_movement` (FUN_00434db0), guarda do golpe (150/152/154) e fim da guarda (estado 140 -> 0/11/51, FUN_0043C480). Detalhes e o que ainda é suposição em docs/mugen_exe_achados.md.
+
+## Empurrão entre corpos portado
+`push_players`, `clamp_to_stage`, `step_frame` (`src/engine/world.*`): aritmética lida no assembly de FUN_0043DF60. Suposição: G = 320. Detalhes em docs/mugen_exe_achados.md.

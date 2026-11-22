@@ -13,7 +13,7 @@ O autor original abandonou o projeto; hoje só a comunidade usa a ferramenta.
 | Utilitários (sff2png, sprmake2, sndmaker) | `src/tools` | não iniciado |
 | Formato SFF | `src/sff` | v1 e v2 mapeados; RLE8 e LZ5 decodificados (extração v2 para PNG funcionando); falta v1, RLE5, raw e PNG |
 | Parsers DEF/CNS/AIR/CMD + expressões | `src/parser` | INI, AIR, CNS/CMD e expressões (parser + avaliador) prontos; falta ligar ao motor (triggers reais) |
-| Estados, controllers, colisão | `src/engine` | estados, triggers, controllers básicos, movimento embutido, física e combate (HitDef, hit, apanhar, guarda) conferido no exe em boa parte; faltam empurrão entre corpos, prioridade, juggle, projéteis |
+| Estados, controllers, colisão | `src/engine` | estados, triggers, controllers básicos, movimento embutido, física e combate (HitDef, hit, apanhar, guarda) conferido no exe em boa parte; empurrão entre corpos portado; faltam prioridade, juggle, projéteis, limite de tela |
 | Renderização OpenGL | `src/render` | não iniciado |
 | Chamadas à API Lua | `src/lua_bind` | não iniciado |
 
