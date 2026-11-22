@@ -126,10 +126,32 @@ CONFERIDO no exe:
   velocidade x = guard.velocity.x × (-facing do atacante); o erro "Guard state error: wrong move type" ocorre se o statetype não é 1, 2 ou 3.
 - **Fim da guarda (estado 140)** é "implementado no motor" (comentário `[State 140, 5]` do common1.cns): código em `FUN_0043C480`
   (0x43CA12–0x43CA75): com `Time >=` duração da animação, vai para 0 (em pé), 11 (agachado) ou 51 (no ar).
-SUPOSIÇÕES a confirmar (o exe decide isso em outro lugar, provavelmente `FUN_0043D950`):
-- o defensor está guardando se o estado está em 120–132 ou 150–155;
-- `guardflag`: H guarda em pé, L agachado, M os dois, A no ar;
+SUPOSIÇÕES restantes (o resto foi conferido na seção "Pipeline de hits"):
+- `guardflag`: H guarda em pé, L agachado, M os dois, A no ar (significado exato de `FUN_00441200` ainda aberto);
 - padrões de guard.velocity/hittime/slidetime/ctrltime vêm da documentação; guard.dist usa size.attack.dist.
 Teste com dois KFM: p2 segura "trás" e entra no estado 120 no tick 0 (soco já ativo no exe: oponente em movetype A), guarda o soco no tick 3
 sem perder vida, é empurrado e volta ao estado 0 com controle (150 → 151 → 130 → 140 → 0). Fora da distância (200 px) ele só anda.
 Não portado: guard damage com a regra de dano mínimo, air guard completo, guarda de projéteis, as flags por statetype.
+
+## Pipeline de hits (`FUN_0043D950`, por frame) e a regra de guarda CONFERIDA
+Ordem em `FUN_0043D950` (leitura do decompilado):
+1. Monta a lista de jogadores vivos (e com HitDef/projétil).
+2. Decrementa o contador +0x10D4 de cada um (imunidade pós-hit do oponente, a confirmar) e zera +0x1424.
+3. **Empurrão entre corpos** (`FUN_0043DE40`) para cada par de times diferentes: se os dois têm o flag de empurrão (+0x298) e as caixas
+   de corpo se sobrepõem, afasta os jogadores (`FUN_0043DF60`, `FUN_0043D8C0`, `FUN_0043D750`). NÃO portado: é um recurso importante que falta.
+4. Para cada par ordenado de times diferentes: `FUN_0043FC60()` (caixas Clsn1 x Clsn2 se sobrepõem + `guardflag`/máscara do oponente) e, se
+   verdadeiro, `FUN_0043FD80(atacante, defensor)` (marca o golpe).
+5. **Prioridade** entre golpes simultâneos: compara os campos +0x12AC (prioridade) e +0x12B0 (tipo: 0 Hit, 2 Dodge...) dos dois e grava em
+   `jogador+0x122C[outro.id]` se o golpe vale (NÃO portado).
+6. Aplica os golpes permitidos com `FUN_0043E480(atacante, defensor)` e depois `FUN_004405C0` (par a par).
+
+`FUN_0043E480` decide acerto x guarda (conferido):
+- Sai se o oponente tem o contador +0x10D4 > 0.
+- **Guardado** se: `defensor+0xEE8 != 0` (flag "guardando") E `FUN_00441200(defensor, guardflag do golpe) != 0` E o byte +0x2B3 do atacante é 0
+  (golpes não guardáveis).
+- Dano de guarda (`FUN_0043F930`): se `vida - dano_de_guarda < 1` o golpe NÃO é guardado e vira um hit normal (salvo uma flag global de chip-kill,
+  a conferir); senão fica guardado.
+- O flag +0xEE8 é zerado a cada tick em `FUN_00434DB0` e ligado: (a) quando o jogador segura "trás" sem "cima", com controle (ou estados 151/153/155)
+  e há oponente atacando (movetype A) ANTES de checar a distância; (b) na intenção 0x28 (movetype I com controle); (c) em `FUN_0043F990` (golpe guardado).
+Isso substitui a suposição anterior ("estado entre 120 e 155"). O porte usa `Player::guarding`.
+Ainda aberto: o significado exato de `FUN_00441200` (porte usa guardflag H/L/M/A contra o statetype), o byte +0x2B3, a chip-kill e as tabelas de HitBy/NotHitBy (loop em defensor+0x1180).

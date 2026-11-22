@@ -143,6 +143,31 @@ int main(int argc, char** argv) {
         CHECK(d.p2.posX > 50.0f, "a guarda deveria empurrar p2 para tras (posX = %f)", (double)d.p2.posX);
         CHECK(d.p2.stateNo == 0 && d.p2.ctrl, "(150 -> 151 -> 130 -> 140 -> 0) p2 deveria voltar ao estado 0 com controle (estado=%d ctrl=%d)", d.p2.stateNo, (int)d.p2.ctrl);
     }
+    // J) guarda que mataria (vida - dano de guarda < 1) vira um hit normal (FUN_0043E480, sem chip-kill)
+    {
+        Duel d(ch, 50);
+        d.p2.commands.insert("holdback");
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { d.step(); d.p1.commands.clear(); }
+        d.e1.tick(d.p1); d.e2.tick(d.p2);          // tick 3: o HitDef esta ativo e p2 esta guardando
+        CHECK(d.p2.guarding, "p2 deveria estar com o flag de guarda");
+        d.p1.hitdef.guardDamage = 30; d.p2.life = 20;
+        resolve_hits(d.p1, d.e1, d.p2, d.e2);
+        CHECK(d.p2.stateNo == 5000 && d.p1.moveHit && !d.p1.moveGuarded, "guarda letal deveria virar hit normal (estado=%d)", d.p2.stateNo);
+        CHECK(d.p2.life == 0, "vida deveria chegar a 0, vida = %d", d.p2.life);
+    }
+    // K) hit que chega de longe (alem da guard.dist) mas com o defensor ja segurando "tras" e oponente atacando: o flag
+    //    de guarda vale mesmo sem entrar no estado 120 (exe marca +0xEE8 antes de checar a distancia)
+    {
+        Duel d(ch, 50);
+        d.p2.commands.insert("holdback");
+        d.p1.commands.insert("x");
+        d.step(); d.p1.commands.clear();
+        d.p2.stateNo = 20;                          // forca p2 a nao estar em estado de guarda
+        d.p2.moveType = 'I';
+        d.e2.tick(d.p2);
+        CHECK(d.p2.guarding, "o flag de guarda vale com oponente atacando, mesmo fora do estado 120");
+    }
     std::printf(fails ? "%d falha(s)\n" : "tudo certo\n", fails);
     return fails ? 1 : 0;
 }

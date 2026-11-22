@@ -35,12 +35,6 @@ static bool hitflag_allows(const HitDef& h, const Player& def) {
     }
 }
 
-// O defensor esta numa situacao de guarda? (estados 120-132 e 150-155). SUPOSICAO a confirmar: o exe decide isso
-// antes de chamar FUN_0043F990 (em FUN_0043D950, ainda nao lida); aqui usamos o numero do estado.
-static bool defender_is_guarding(const Player& d) {
-    int n = d.stateNo;
-    return (n >= 120 && n <= 132) || (n >= 150 && n <= 155);
-}
 // guardflag: H = em pe, L = agachado, M = H+L, A = ar (docs)
 static bool guardflag_allows(const HitDef& h, const Player& d) {
     const std::string& f = h.guardFlag;
@@ -67,8 +61,11 @@ bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk)
             hit = boxes_overlap(world_box(atk, fa->clsn1[i]), world_box(def, fd->clsn2[j]));
     if (!hit) return false;
 
-    // --- golpe guardado (FUN_0043F990 no exe: estados 150 / 152 / 154) ---
-    if (defender_is_guarding(def) && guardflag_allows(h, def)) {
+    // --- golpe guardado (FUN_0043E480 decide; FUN_0043F990 aplica: estados 150 / 152 / 154) ---
+    // Regra do exe: defensor com o flag "guardando" (+0xEE8, calculado por default_movement) E o guardflag do golpe
+    // combina com o estado dele (FUN_00441200) E o dano de guarda nao mata (vida - dano >= 1; sem chip-kill).
+    // Ainda nao portado: o byte +0x2B3 do atacante (golpes nao guardaveis) e a regra de chip-kill.
+    if (def.guarding && guardflag_allows(h, def) && def.life - h.guardDamage >= 1) {
         HitDef hd = h;
         atk.moveContact = atk.moveGuarded = true;
         if (hd.hitOnce) atk.hitdef.active = false;
@@ -88,6 +85,7 @@ bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk)
         g.xvel = gx * (float)(-atk.facing);
         int gstate = def.stateType == 'C' ? 152 : air ? 154 : 150;
         def.ctrl = false;
+        def.guarding = true;                                   // FUN_0043F990 grava +0xEE8 = 1
         if (!engDef.enter_state(def, gstate)) return true;
         def.pauseTime = shake;
         def.hitTime = hit;

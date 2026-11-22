@@ -65,6 +65,7 @@ struct Player {
     int   pauseTime;                  // hitpause: ticks restantes (atacante) / shake (defensor)
     int   hitTime;                    // ticks restantes no estado de apanhar depois do shake
     bool  moveContact, moveHit, moveGuarded;   // vale ate trocar de estado
+    bool  guarding;                   // exe: campo +0xEE8; recalculado a cada tick por default_movement
     const Player* enemy;              // oponente (para InGuardDist); definido pelo chamador
     int   defaultGuardDist;           // Const(size.attack.dist); -1 = ainda nao lido
     int   life0;                      // vida inicial (so para informacao)

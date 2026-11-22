@@ -8,7 +8,7 @@ static std::string lower(std::string s) { for (size_t i = 0; i < s.size(); ++i) 
 
 Player::Player() : stateNo(0), prevStateNo(0), time(0), ctrl(false), anim(0), animElapsed(0),
     posX(0), posY(0), velX(0), velY(0), facing(1), life(1000), power(0),
-    pauseTime(0), hitTime(0), moveContact(false), moveHit(false), moveGuarded(false), enemy(0), defaultGuardDist(-1), life0(1000),
+    pauseTime(0), hitTime(0), moveContact(false), moveHit(false), moveGuarded(false), guarding(false), enemy(0), defaultGuardDist(-1), life0(1000),
     stateType('S'), moveType('I'), physics('N') {
     for (int i = 0; i < 60; ++i) var[i] = 0;
     for (int i = 0; i < 40; ++i) fvar[i] = 0;
@@ -418,10 +418,12 @@ void Engine::default_movement(Player& p) {
     // guardando (151/153/155), e um oponente atacando dentro da guard.dist -> intencao 0x28 (sobrepoe as demais).
     // NAO portado: as flags por statetype do personagem (+0x2AC/+0x2AD/+0x2AE) e projeteis.
     bool guardIntent = false;
+    p.guarding = false;                  // exe: *(player+0xEE8) = 0 antes do teste de guarda
     if (back && !up && p.enemy &&
         ((p.moveType == 'I' && (p.ctrl || p.stateNo == 52)) || p.stateNo == 151 || p.stateNo == 153 || p.stateNo == 155)) {
         const Player* o = p.enemy;
         if (o->moveType == 'A') {
+            p.guarding = true;           // exe: +0xEE8 = 1 sempre que ha oponente atacando, ANTES de checar a distancia
             int gd = o->hitdef.guardDist >= 0 ? o->hitdef.guardDist : o->defaultGuardDist;
             float d = (p.posX - o->posX) * (float)o->facing;
             if (d >= 0.0f && d < (float)gd) guardIntent = true;
@@ -432,6 +434,7 @@ void Engine::default_movement(Player& p) {
     if (intent == 0x28) {
         // exige movetype I e ctrl; nao reinicia a guarda se ja esta nos estados 120/130/131/132/140
         if (p.moveType == 'I' && p.ctrl) {
+            p.guarding = true;
             int sn = p.stateNo;
             if (sn != 130 && sn != 131 && sn != 132 && sn != 120 && sn != 140) {
                 if (p.stateType != 'A' && sn != 100) p.velX = 0;
