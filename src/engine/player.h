@@ -28,9 +28,17 @@ struct HitDef {
     int   fall;
     int   priority;
     bool  hitOnce;
+    // guarda (docs); kUnset = omitido -> o padrao e resolvido na hora do golpe
+    std::string guardFlag;           // padrao "" (nao pode ser guardado)
+    int   guardDist;                 // x-distancia de guarda; padrao = Const(size.attack.dist) (exe: campo 0x4EB)
+    int   guardPause1, guardPause2;
+    float guardVelX;
+    int   guardHitTime, guardSlideTime, guardCtrlTime;
     HitDef() : active(false), attrTypes(0), hitflag("MAF"), damage(0), guardDamage(0), pause1(0), pause2(0),
         groundHitTime(0), groundSlideTime(0), airHitTime(20), groundVelX(0), groundVelY(0), airVelX(0), airVelY(0), groundVelYSet(false), airVelYSet(false),
-        groundType(1), airType(1), animType(0), yaccel(0.35f), fall(0), priority(4), hitOnce(true) {}
+        groundType(1), airType(1), animType(0), yaccel(0.35f), fall(0), priority(4), hitOnce(true),
+        guardDist(-1), guardPause1(-9999), guardPause2(-9999), guardVelX(-9999.0f),
+        guardHitTime(-9999), guardSlideTime(-9999), guardCtrlTime(-9999) {}
 };
 
 // Valores de GetHitVar(...) do ultimo golpe recebido.
@@ -56,7 +64,9 @@ struct Player {
     GetHitVars gethit;
     int   pauseTime;                  // hitpause: ticks restantes (atacante) / shake (defensor)
     int   hitTime;                    // ticks restantes no estado de apanhar depois do shake
-    bool  moveContact, moveHit;       // vale ate trocar de estado
+    bool  moveContact, moveHit, moveGuarded;   // vale ate trocar de estado
+    const Player* enemy;              // oponente (para InGuardDist); definido pelo chamador
+    int   defaultGuardDist;           // Const(size.attack.dist); -1 = ainda nao lido
     int   life0;                      // vida inicial (so para informacao)
     std::set<std::string> commands;   // comandos ativos neste tick (minusculas), definidos pelo chamador
     std::map<std::string, int> persist; // contadores de "persistent" por controller, zerados ao trocar de estado

@@ -54,3 +54,6 @@ A entrada/saída 0 <-> 20 (e agachar 10/12, pular 40/45) é código do exe em `F
 
 ## Combate (primeira fatia)
 `src/engine/combat.*`: Clsn1 x Clsn2, HitDef, pausa de hit, estado de apanhar 5000/5010/5020, GetHitVar. Baseado na documentação. Pendente: conferir em FUN_0043FD80 e FUN_0043ECE0 (ver docs/mugen_exe_achados.md).
+
+## Guarda portada
+InGuardDist (FUN_004347a0), intenção de guarda 0x28 em `default_movement` (FUN_00434db0), guarda do golpe (150/152/154) e fim da guarda (estado 140 -> 0/11/51, FUN_0043C480). Detalhes e o que ainda é suposição em docs/mugen_exe_achados.md.

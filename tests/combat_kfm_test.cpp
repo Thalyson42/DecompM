@@ -12,6 +12,7 @@ struct Duel {
     Duel(const Character& ch, float dist) : e1(ch), e2(ch) {
         e1.enter_state(p1, 0); e2.enter_state(p2, 0);
         p1.ctrl = p2.ctrl = true; p1.facing = 1; p2.facing = -1; p1.posX = 0; p2.posX = dist;
+        p1.enemy = &p2; p2.enemy = &p1;
     }
     void step() { e1.tick(p1); e2.tick(p2); resolve_hits(p1, e1, p2, e2); }
 };
@@ -99,6 +100,48 @@ int main(int argc, char** argv) {
         resolve_hits(n.p1, n.e1, n.p2, n.e2);
         CHECK(n.p2.stateNo == 0 && n.p2.life == 1000, "None so pausa: estado 0 e vida intacta (estado=%d vida=%d)", n.p2.stateNo, n.p2.life);
         CHECK(n.p2.pauseTime == 8 && n.p1.pauseTime == 8, "None ainda pausa os dois (p1=%d p2=%d)", n.p1.pauseTime, n.p2.pauseTime);
+    }
+    // G) guarda: p2 segura "tras" quando p1 ataca dentro da guard.dist -> estado 120 -> guarda o soco (150), sem dano
+    {
+        Duel d(ch, 50);
+        d.p2.commands.insert("holdback");
+        d.p1.commands.insert("x");
+        int guardedAt = -1, firstGuardState = -1;
+        bool flagsOk = false, hitFlag = false;
+        for (int t = 0; t < 40; ++t) {
+            d.step(); d.p1.commands.clear();
+            if (firstGuardState < 0 && d.p2.stateNo >= 120 && d.p2.stateNo <= 132) firstGuardState = t;
+            if (guardedAt < 0 && d.p1.moveGuarded) { guardedAt = t; flagsOk = d.p1.moveContact; hitFlag = d.p1.moveHit; }
+        }
+        std::printf("G) p2 entrou na guarda no tick %d, soco guardado no tick %d, vida p2=%d, estado=%d\n", firstGuardState, guardedAt, d.p2.life, d.p2.stateNo);
+        CHECK(firstGuardState == 0, "p2 deveria entrar no estado 120 ja no tick 0 (oponente atacando dentro da guard.dist), foi no %d", firstGuardState);
+        CHECK(guardedAt == 3, "o soco deveria ser guardado no tick 3, foi no %d", guardedAt);
+        CHECK(d.p2.life == 1000, "guardado: o KFM nao tem guard damage, vida = %d", d.p2.life);
+        CHECK(!hitFlag, "guardado nao e MoveHit");
+        CHECK(flagsOk, "p1 deveria ter MoveContact junto com MoveGuarded");
+    }
+    // H) sem segurar "tras" o mesmo soco acerta; e a 200 px (fora da guard.dist de 160) nao entra em guarda
+    {
+        Duel d(ch, 50);
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 4; ++t) { d.step(); d.p1.commands.clear(); }
+        CHECK(d.p2.life == 1000 - 23 && !d.p1.moveGuarded, "sem holdback o soco acerta (vida=%d)", d.p2.life);
+        Duel f(ch, 200);
+        f.p2.commands.insert("holdback");
+        f.p1.commands.insert("x");
+        for (int t = 0; t < 6; ++t) { f.step(); f.p1.commands.clear(); }
+        CHECK(f.p2.stateNo < 120 || f.p2.stateNo > 155, "a 200 px (fora da guard.dist) p2 nao deveria guardar, esta em %d", f.p2.stateNo);
+        CHECK(f.p2.stateNo == 20, "segurando so \"tras\" fora da distancia p2 anda (estado 20), esta em %d", f.p2.stateNo);
+    }
+    // I) apos o recuo da guarda p2 recupera o controle e volta a um estado livre
+    {
+        Duel d(ch, 50);
+        d.p2.commands.insert("holdback");
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 80; ++t) { d.step(); d.p1.commands.clear(); if (t == 20) d.p2.commands.clear(); }
+        std::printf("I) depois de 80 ticks: p2 estado=%d ctrl=%d posX=%.1f\n", d.p2.stateNo, (int)d.p2.ctrl, (double)d.p2.posX);
+        CHECK(d.p2.posX > 50.0f, "a guarda deveria empurrar p2 para tras (posX = %f)", (double)d.p2.posX);
+        CHECK(d.p2.stateNo == 0 && d.p2.ctrl, "(150 -> 151 -> 130 -> 140 -> 0) p2 deveria voltar ao estado 0 com controle (estado=%d ctrl=%d)", d.p2.stateNo, (int)d.p2.ctrl);
     }
     std::printf(fails ? "%d falha(s)\n" : "tudo certo\n", fails);
     return fails ? 1 : 0;

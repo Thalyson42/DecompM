@@ -8,7 +8,7 @@ static std::string lower(std::string s) { for (size_t i = 0; i < s.size(); ++i) 
 
 Player::Player() : stateNo(0), prevStateNo(0), time(0), ctrl(false), anim(0), animElapsed(0),
     posX(0), posY(0), velX(0), velY(0), facing(1), life(1000), power(0),
-    pauseTime(0), hitTime(0), moveContact(false), moveHit(false), life0(1000),
+    pauseTime(0), hitTime(0), moveContact(false), moveHit(false), moveGuarded(false), enemy(0), defaultGuardDist(-1), life0(1000),
     stateType('S'), moveType('I'), physics('N') {
     for (int i = 0; i < 60; ++i) var[i] = 0;
     for (int i = 0; i < 40; ++i) fvar[i] = 0;
@@ -67,7 +67,16 @@ struct PlayerCtx : ExprContext {
         if (n == "pi") { out = V::Float(3.14159265f); return true; }
         if (n == "movecontact") { out = V::Int(p.moveContact ? 1 : 0); return true; }
         if (n == "movehit")     { out = V::Int(p.moveHit ? 1 : 0); return true; }
-        if (n == "moveguarded") { out = V::Int(0); return true; }               // guarda ainda nao implementada
+        if (n == "moveguarded") { out = V::Int(p.moveGuarded ? 1 : 0); return true; }
+        if (n == "inguarddist") {   // porte de FUN_004347a0: oponente atacando e a distancia a frente dele dentro da guard.dist
+            const Player* o = p.enemy; int r = 0;
+            if (o && o->moveType == 'A') {
+                int gd = o->hitdef.guardDist >= 0 ? o->hitdef.guardDist : o->defaultGuardDist;
+                float d = (p.posX - o->posX) * (float)o->facing;
+                if (d >= 0.0f && d < (float)gd) r = 1;
+            }
+            out = V::Int(r); return true;
+        }
         if (n == "hitshakeover"){ out = V::Int(p.pauseTime <= 0 ? 1 : 0); return true; }
         if (n == "hitover")     { out = V::Int(p.hitTime <= 0 ? 1 : 0); return true; }
         if (n == "hitpausetime"){ out = V::Int(p.pauseTime); return true; }
@@ -248,7 +257,8 @@ bool Engine::enter_state(Player& p, int n) {
     const CnsStatedef* sd = ch_.state(n);
     if (!sd) return false;
     p.prevStateNo = p.stateNo; p.stateNo = n; p.time = 0; p.persist.clear();
-    p.moveContact = p.moveHit = false; p.hitdef.active = false;   // vale ate trocar de estado
+    p.moveContact = p.moveHit = p.moveGuarded = false; p.hitdef.active = false;
+    if (p.defaultGuardDist < 0) { float k; p.defaultGuardDist = ch_.constant("size.attack.dist", k) ? (int)k : 0; }   // vale ate trocar de estado
     // Parametros do Statedef; omitidos assumem S / I / N (doc). "U" = sem mudanca.
     std::string v;
     v = sd->param("type");     p.stateType = v.empty() ? 'S' : (char)std::toupper((unsigned char)v[0]) == 'U' ? p.stateType : (char)std::toupper((unsigned char)v[0]);
@@ -320,6 +330,13 @@ void Engine::exec_hitdef(Player& p, const CnsController& c) {
     if (param_int(p, c, "fall", iv)) h.fall = iv;
     if (param_values(p, c, "priority", v) && !v.empty()) h.priority = to_i(v[0]);
     if (param_int(p, c, "hitonce", iv)) h.hitOnce = iv != 0;
+    h.guardFlag = first_token(raw_param(c, "guardflag"));
+    if (param_int(p, c, "guard.dist", iv)) h.guardDist = iv; else h.guardDist = p.defaultGuardDist;
+    if (param_values(p, c, "guard.pausetime", v)) { if (v.size() > 0) h.guardPause1 = to_i(v[0]); if (v.size() > 1) h.guardPause2 = to_i(v[1]); }
+    if (param_float(p, c, "guard.velocity", fv)) h.guardVelX = fv;
+    if (param_int(p, c, "guard.hittime", iv)) h.guardHitTime = iv;
+    if (param_int(p, c, "guard.slidetime", iv)) h.guardSlideTime = iv;
+    if (param_int(p, c, "guard.ctrltime", iv)) h.guardCtrlTime = iv;
     h.active = true;
     p.hitdef = h;
 }
@@ -397,7 +414,32 @@ void Engine::default_movement(Player& p) {
     }
     if (p.stateType == 'C' && down) keepCrouch = true;
     if (fwd && back) intent = -1;        // as duas direcoes juntas cancelam qualquer intencao
+    // Guarda automatica (FUN_00434db0 + FUN_004347a0): segurando "trás", sem "cima", com controle parado ou ja
+    // guardando (151/153/155), e um oponente atacando dentro da guard.dist -> intencao 0x28 (sobrepoe as demais).
+    // NAO portado: as flags por statetype do personagem (+0x2AC/+0x2AD/+0x2AE) e projeteis.
+    bool guardIntent = false;
+    if (back && !up && p.enemy &&
+        ((p.moveType == 'I' && (p.ctrl || p.stateNo == 52)) || p.stateNo == 151 || p.stateNo == 153 || p.stateNo == 155)) {
+        const Player* o = p.enemy;
+        if (o->moveType == 'A') {
+            int gd = o->hitdef.guardDist >= 0 ? o->hitdef.guardDist : o->defaultGuardDist;
+            float d = (p.posX - o->posX) * (float)o->facing;
+            if (d >= 0.0f && d < (float)gd) guardIntent = true;
+        }
+    }
+    if (guardIntent && !(fwd && back)) intent = 0x28;
     bool handled = false;
+    if (intent == 0x28) {
+        // exige movetype I e ctrl; nao reinicia a guarda se ja esta nos estados 120/130/131/132/140
+        if (p.moveType == 'I' && p.ctrl) {
+            int sn = p.stateNo;
+            if (sn != 130 && sn != 131 && sn != 132 && sn != 120 && sn != 140) {
+                if (p.stateType != 'A' && sn != 100) p.velX = 0;
+                enter_state(p, 120);
+            }
+        }
+        return;      // o exe pula a regra "estado 20 -> 0" e a de levantar
+    }
     if (intent == 11) {
         if (p.ctrl && p.stateNo != 10 && p.stateNo != 11) enter_state(p, 10);
         handled = true;
@@ -439,8 +481,15 @@ void Engine::tick(Player& p) {
     // Pausa de hit (hitpause / shake): o exe decrementa a pausa no lugar de mover (FUN_0043c480).
     // Durante a pausa so rodam controllers com ignorehitpause (docs); Time e animacao ficam congelados.
     bool paused = p.pauseTime > 0;
-    if (!paused) { default_movement(p); physics(p); }
-    else --p.pauseTime;
+    if (!paused) {
+        default_movement(p); physics(p);
+        // Fim da guarda "implementado no motor" (comentario [State 140, 5] do common1.cns; codigo em FUN_0043C480,
+        // 0x43CA12-0x43CA75): estado 140 com Time >= duracao da animacao -> 0 (em pe), 11 (agachado) ou 51 (no ar).
+        if (p.stateNo == 140) {
+            int lt = anim_looptime(p.anim);
+            if (lt > 0 && p.time >= lt) enter_state(p, p.stateType == 'C' ? 11 : p.stateType == 'A' ? 51 : 0);
+        }
+    } else --p.pauseTime;
     // 1) estados especiais -3, -2, -1: uma passada; ChangeState aborta so o restante daquele estado
     for (int sn = -3; sn <= -1; ++sn) {
         const CnsStatedef* sd = ch_.state(sn);

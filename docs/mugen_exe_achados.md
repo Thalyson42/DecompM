@@ -112,3 +112,24 @@ Conferido e já aplicado no porte (`src/engine/combat.cpp`):
 - `FUN_00441410` cria a faísca (spark) do hit; não aplica dano. `FUN_0043C0B0` ajusta o poder (limite 0..máximo).
 - Poder: o atacante ganha `param_1[0x49C]`, limitado ao máximo (ver FUN_0043FD80).
 Ainda por conferir: tempos exatos (hittime/slidetime/ctrltime), `p1stateno`/`p2stateno`, juggle, guarda (flag em hitdef+0xBC), prioridade.
+
+## Guarda (src/engine/player.cpp, src/engine/combat.cpp)
+CONFERIDO no exe:
+- **Intenção de guarda 0x28** (`FUN_00434db0`): exige segurar "trás" (+0x39C), não segurar cima (+0x390), e (movetype I com `ctrl`, ou estado 52,
+  ou estados 151/153/155); procura um oponente de outro time com movetype A e chama `FUN_004347a0`. Também há três flags por statetype do
+  personagem (+0x2AC/+0x2AD/+0x2AE, bytes) que proíbem guardar (NÃO portadas) e o caso de projéteis (NÃO portado).
+- **`FUN_004347a0` = trigger InGuardDist**: oponente com movetype A e `0 <= (x_do_jogador - x_do_oponente) * facing_do_oponente < guard.dist`
+  do HitDef do oponente (campo 0x4EB; padrão = `Const(size.attack.dist)`, 160 no KFM). Há o mesmo teste para cada projétil do oponente.
+- Com a intenção 0x28, movetype I e `ctrl`: se o estado não é 120/130/131/132/140, zera `vel.x` (salvo no ar ou estado 100) e entra no **estado 120**.
+  Esse ramo termina a função sem a regra "estado 20 → 0".
+- **Golpe guardado** (`FUN_0043F990`): estado 150 (em pé), 152 (agachado) ou 154 (no ar); `ctrl = 0`, `movetype = H`, `Time = 0`;
+  velocidade x = guard.velocity.x × (-facing do atacante); o erro "Guard state error: wrong move type" ocorre se o statetype não é 1, 2 ou 3.
+- **Fim da guarda (estado 140)** é "implementado no motor" (comentário `[State 140, 5]` do common1.cns): código em `FUN_0043C480`
+  (0x43CA12–0x43CA75): com `Time >=` duração da animação, vai para 0 (em pé), 11 (agachado) ou 51 (no ar).
+SUPOSIÇÕES a confirmar (o exe decide isso em outro lugar, provavelmente `FUN_0043D950`):
+- o defensor está guardando se o estado está em 120–132 ou 150–155;
+- `guardflag`: H guarda em pé, L agachado, M os dois, A no ar;
+- padrões de guard.velocity/hittime/slidetime/ctrltime vêm da documentação; guard.dist usa size.attack.dist.
+Teste com dois KFM: p2 segura "trás" e entra no estado 120 no tick 0 (soco já ativo no exe: oponente em movetype A), guarda o soco no tick 3
+sem perder vida, é empurrado e volta ao estado 0 com controle (150 → 151 → 130 → 140 → 0). Fora da distância (200 px) ele só anda.
+Não portado: guard damage com a regra de dano mínimo, air guard completo, guarda de projéteis, as flags por statetype.
