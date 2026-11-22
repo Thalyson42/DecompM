@@ -71,6 +71,35 @@ int main(int argc, char** argv) {
         std::printf("D) p1.time=%d depois de 2 ticks em pausa=%d (pauseTime=%d)\n", a, d.p1.time, d.p1.pauseTime);
         CHECK(d.p1.time == a, "o Time de p1 deveria ficar congelado durante o hitpause");
     }
+    // E) atingido por tras (os dois olham para a direita): High vira Low; o empurrao continua afastando de p1
+    {
+        Duel d(ch, 50);
+        d.p2.facing = 1;
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 4; ++t) { d.step(); d.p1.commands.clear(); }
+        CHECK(d.p2.stateNo == 5000, "hit por tras tambem leva ao 5000, esta em %d", d.p2.stateNo);
+        CHECK(d.p2.gethit.groundType == 2, "por tras, High deveria virar Low (2), veio %d", d.p2.gethit.groundType);
+        for (int t = 0; t < 30; ++t) { d.step(); }
+        CHECK(d.p2.posX > 50.0f, "o empurrao deve afastar p2 de p1 mesmo de costas, posX = %f", (double)d.p2.posX);
+    }
+    // F) ground.type Trip (3) leva ao estado 5070; None (0) so pausa, sem dano e sem estado de apanhar
+    {
+        Duel d(ch, 50);
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { d.step(); d.p1.commands.clear(); }
+        d.e1.tick(d.p1); d.e2.tick(d.p2);                   // tick 3: o HitDef fica ativo
+        d.p1.hitdef.groundType = 3;
+        resolve_hits(d.p1, d.e1, d.p2, d.e2);
+        CHECK(d.p2.stateNo == 5070, "Trip deveria levar ao estado 5070, esta em %d", d.p2.stateNo);
+        Duel n(ch, 50);
+        n.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { n.step(); n.p1.commands.clear(); }
+        n.e1.tick(n.p1); n.e2.tick(n.p2);
+        n.p1.hitdef.groundType = 0;
+        resolve_hits(n.p1, n.e1, n.p2, n.e2);
+        CHECK(n.p2.stateNo == 0 && n.p2.life == 1000, "None so pausa: estado 0 e vida intacta (estado=%d vida=%d)", n.p2.stateNo, n.p2.life);
+        CHECK(n.p2.pauseTime == 8 && n.p1.pauseTime == 8, "None ainda pausa os dois (p1=%d p2=%d)", n.p1.pauseTime, n.p2.pauseTime);
+    }
     std::printf(fails ? "%d falha(s)\n" : "tudo certo\n", fails);
     return fails ? 1 : 0;
 }

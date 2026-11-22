@@ -85,7 +85,7 @@ struct PlayerCtx : ExprContext {
             else if (v == "hittime") out = V::Int(g.hitTime);
             else if (v == "fall") out = V::Int(g.fall);
             else if (v == "damage") out = V::Int(g.damage);
-            else if (v == "xvel") out = V::Float(g.xvel);
+            else if (v == "xvel") out = V::Float(g.xvel * (float)p.facing);   // relativo ao lado de quem apanha (suposicao)
             else if (v == "yvel") out = V::Float(g.yvel);
             else if (v == "yaccel") out = V::Float(g.yaccel);
             else if (v == "fall.yvel") out = V::Float(g.fallYvel);
@@ -310,8 +310,8 @@ void Engine::exec_hitdef(Player& p, const CnsController& c) {
     if (param_int(p, c, "ground.hittime", iv)) h.groundHitTime = iv;
     if (param_int(p, c, "ground.slidetime", iv)) h.groundSlideTime = iv;
     if (param_int(p, c, "air.hittime", iv)) h.airHitTime = iv;
-    if (param_values(p, c, "ground.velocity", v)) { if (v.size() > 0) h.groundVelX = to_f(v[0]); if (v.size() > 1) h.groundVelY = to_f(v[1]); }
-    if (param_values(p, c, "air.velocity", v)) { if (v.size() > 0) h.airVelX = to_f(v[0]); if (v.size() > 1) h.airVelY = to_f(v[1]); }
+    if (param_values(p, c, "ground.velocity", v)) { if (v.size() > 0) h.groundVelX = to_f(v[0]); if (v.size() > 1) { h.groundVelY = to_f(v[1]); h.groundVelYSet = true; } }
+    if (param_values(p, c, "air.velocity", v)) { if (v.size() > 0) h.airVelX = to_f(v[0]); if (v.size() > 1) { h.airVelY = to_f(v[1]); h.airVelYSet = true; } }
     h.groundType = hit_type(raw_param(c, "ground.type"), 1);
     h.airType = raw_param(c, "air.type").empty() ? h.groundType : hit_type(raw_param(c, "air.type"), h.groundType);
     std::string at = lower(first_token(raw_param(c, "animtype")));
@@ -370,7 +370,7 @@ bool Engine::exec(Player& p, const CnsController& c) {
     if (t == "hitdef") { exec_hitdef(p, c); return false; }
     if (t == "hitvelset") {
         // x/y = 1: usa a velocidade do golpe recebido (GetHitVar xvel/yvel). xvel e relativo ao lado de quem apanha.
-        if (param_int(p, c, "x", iv) && iv != 0) p.velX = p.gethit.xvel * (float)p.facing;
+        if (param_int(p, c, "x", iv) && iv != 0) p.velX = p.gethit.xvel;   // absoluto (FUN_0043ECE0: valor * -facing do atacante)
         if (param_int(p, c, "y", iv) && iv != 0) p.velY = p.gethit.yvel;
         return false;
     }

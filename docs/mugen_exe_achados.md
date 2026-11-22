@@ -96,3 +96,19 @@ HitOver, HitVelSet, AnimElem/AnimElemTime e TimeMod (sintaxe antiga).
 Resultado do teste: soco 200 a 50 px acerta no tick 3 (AnimElem = 3), p2 perde 23, vai a 5000 (shake de 8 ticks), depois 5001 e volta ao 0
 no tick 23, empurrado para 67 px. A 100 px o golpe erra.
 Não implementado: guarda, prioridade entre golpes simultâneos, NotHitBy/HitBy, juggle, fall, cantos da tela, virar para o atacante.
+
+## Combate: o que foi CONFERIDO no exe (FUN_0043FD80, FUN_0043ECE0, FUN_0043F930, FUN_00441410)
+`FUN_0043FD80(atacante, defensor)` aplica o golpe; chama `FUN_0043ECE0(.., defensor, hitdef do atacante, x, y, facing, ..)` para calcular a resposta.
+O HitDef do atacante é uma estrutura a partir do índice 0x48C (offset 0x1230); o "gethit" do defensor fica em +0x10F0..+0x117C.
+Conferido e já aplicado no porte (`src/engine/combat.cpp`):
+- Estado de apanhar: em pé → **5000**; agachado → **5010** (`(statetype != 1 ? 10 : 0) + 5000`); no ar → **5020** (0x139C); tipo Trip (3) → **5070** (0x13CE).
+- `forcestand` converte agachado em em pé antes de escolher o estado (parâmetro ainda não lido no porte).
+- Velocidade x do golpe = valor × **(-facing do atacante)**, em coordenada absoluta; se o y foi omitido no HitDef, o defensor **mantém a velocidade y atual**.
+- Atingido por trás (defensor olhando para o mesmo lado do atacante): High ↔ Low.
+- Tipo None (0): só pausa; o exe devolve antes de calcular dano e variáveis do golpe.
+- Dano (`FUN_0043F930`): se o dano pedido é > 0 e o cálculo dá 0, vira 1. O dano fica acumulado em +0x1104 do defensor.
+  Existe uma regra de "não matar" (campo +0xF00): o dano é limitado para deixar 1 de vida. NÃO portada (não sei ainda o que liga esse campo).
+- No fim da resposta: `ctrl = 0`, `movetype = H (2)`, `Time = 0`, contador de acertos +1.
+- `FUN_00441410` cria a faísca (spark) do hit; não aplica dano. `FUN_0043C0B0` ajusta o poder (limite 0..máximo).
+- Poder: o atacante ganha `param_1[0x49C]`, limitado ao máximo (ver FUN_0043FD80).
+Ainda por conferir: tempos exatos (hittime/slidetime/ctrltime), `p1stateno`/`p2stateno`, juggle, guarda (flag em hitdef+0xBC), prioridade.

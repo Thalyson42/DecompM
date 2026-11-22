@@ -21,6 +21,7 @@ struct HitDef {
     int   pause1, pause2;            // pausetime: congela o atacante / faz o oponente tremer
     int   groundHitTime, groundSlideTime, airHitTime;
     float groundVelX, groundVelY, airVelX, airVelY;
+    bool  groundVelYSet, airVelYSet;   // omitido: o exe mantem a velocidade y atual do oponente
     int   groundType, airType;       // 1 = High, 2 = Low, 3 = Trip, 0 = None
     int   animType;                  // 0 Light, 1 Medium, 2 Hard, 3 Back, 4 Up, 5 DiagUp
     float yaccel;
@@ -28,14 +29,14 @@ struct HitDef {
     int   priority;
     bool  hitOnce;
     HitDef() : active(false), attrTypes(0), hitflag("MAF"), damage(0), guardDamage(0), pause1(0), pause2(0),
-        groundHitTime(0), groundSlideTime(0), airHitTime(20), groundVelX(0), groundVelY(0), airVelX(0), airVelY(0),
+        groundHitTime(0), groundSlideTime(0), airHitTime(20), groundVelX(0), groundVelY(0), airVelX(0), airVelY(0), groundVelYSet(false), airVelYSet(false),
         groundType(1), airType(1), animType(0), yaccel(0.35f), fall(0), priority(4), hitOnce(true) {}
 };
 
 // Valores de GetHitVar(...) do ultimo golpe recebido.
 struct GetHitVars {
     int animType, groundType, airType, slideTime, ctrlTime, hitTime, fall, damage;
-    float xvel, yvel, yaccel, fallYvel;
+    float xvel, yvel, yaccel, fallYvel;   // xvel em coordenada ABSOLUTA (ja multiplicada por -facing do atacante)
     GetHitVars() : animType(0), groundType(0), airType(0), slideTime(0), ctrlTime(0), hitTime(0), fall(0), damage(0),
         xvel(0), yvel(0), yaccel(0), fallYvel(0) {}
 };
