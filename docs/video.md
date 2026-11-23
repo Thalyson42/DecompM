@@ -29,3 +29,17 @@ O backend de software segue essa ordem (`apply_palfx`).
 - Uma única textura 256x1 por paleta; `update_palette` troca só os dados (PalFX por paleta, e não por sprite).
 - Texturas de sprite: NPOT sem mipmap, `CLAMP_TO_EDGE`, filtro `NEAREST`.
 - A superfície nativa entra por `VideoConfig::nativeWindow` (SDL no PC, `ANativeWindow*` no Android); o contexto EGL/Vulkan fica DENTRO do backend, e o ciclo de vida (perder e recuperar a superfície no Android) chega por `resize` e `init`/`shutdown`.
+
+## Vulkan no Android e ajustes por driver (FUTURO; Mali primeiro)
+Planejado, ainda não implementado. O que já existe na interface para isso não custar caro depois:
+- `Video::caps()` devolve `VideoCaps` (família da GPU, textura máxima, se é GPU de blocos, se faz pré-rotação). `gpu_family_detect()` reconhece a família pelo vendorID do Vulkan
+  (ARM 0x13B5 = Mali) ou pelo texto do renderizador do GLES ("Mali-G715"). Os ajustes por driver ficam DENTRO de cada backend, escolhidos por `caps().gpu`, e o motor nunca os vê.
+- `Video::set_display_rotation(graus)`: o Vulkan no Android usa para pré-rotacionar a imagem e evitar o giro do compositor.
+- Todo desenho é guardado até `end_frame()`, então o backend pode agrupar os sprites em poucas chamadas.
+Hipóteses a validar quando chegar a hora (são dicas, nada disso está medido):
+- Mali é de renderização em blocos: desenhar o quadro lógico (320x240) numa imagem fora da tela, com UMA passada e sem recarregar o quadro (`loadOp` clear ou don't-care; `storeOp` don't-care para o que não é usado), e só então ampliar para a tela em outra passada.
+- Agrupar sprites (buffer de vértices dinâmico mapeado de forma persistente, e pouca troca de pipeline/descritor); uma textura 256x1 por paleta.
+- Cuidado com `discard` e com `mediump`/FP16 no shader de máscara; medir com o Arm Streamline e o Mali Offline Compiler.
+- Evitar `STORAGE`/transferência nas imagens de cor, para não perder a compressão do quadro (AFBC).
+- Cache de pipelines em disco; criar a swapchain com 2 ou 3 imagens e tratar `VK_ERROR_OUT_OF_DATE_KHR` e a perda da superfície (ciclo de vida do Android).
+- Outros fabricantes (Adreno, PowerVR) entram depois como perfis próprios; o perfil "genérico" continua sendo o padrão.

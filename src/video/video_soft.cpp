@@ -14,7 +14,10 @@ inline float clamp01(float v) { return v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v; }
 // Mesmo modelo do shader do original: paleta, mascara, PalFX (colorbal -> inverter -> (cor + add) * mul), alfa do sprite.
 class SoftVideo : public Video {
 public:
-    SoftVideo() : w_(0), h_(0), nextTex_(1), nextPal_(1), inFrame_(false) {}
+    SoftVideo() : w_(0), h_(0), nextTex_(1), nextPal_(1), inFrame_(false) {
+        caps_.gpu = GpuFamily::Software; caps_.renderer = "software"; caps_.maxTextureSize = 8192;
+    }
+    const VideoCaps& caps() const { return caps_; }
     Backend backend() const { return Backend::Software; }
     bool init(const VideoConfig& cfg) {
         if (cfg.logicalWidth <= 0 || cfg.logicalHeight <= 0) { err_ = "tamanho logico invalido"; return false; }
@@ -147,6 +150,7 @@ private:
         d[3] = 255;
     }
 
+    VideoCaps caps_;
     int w_, h_; uint32_t nextTex_, nextPal_; bool inFrame_;
     std::vector<uint8_t> fb_;
     std::map<TextureId, Tex> tex_;

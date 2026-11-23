@@ -22,6 +22,24 @@ const char* backend_name(Backend b);
 
 enum class Blend { Alpha, Add, Sub };
 
+// Familia da GPU. Serve para escolher ajustes por driver nos backends reais (futuro: Mali primeiro).
+enum class GpuFamily { Unknown, Software, Mali, Adreno, PowerVR, Apple, Intel, Nvidia, Amd };
+const char* gpu_family_name(GpuFamily f);
+// Detecta a familia pelo ID de fabricante do Vulkan (VkPhysicalDeviceProperties::vendorID: ARM 0x13B5, Qualcomm 0x5143,
+// Imagination 0x1010, Apple 0x106B, Intel 0x8086, NVIDIA 0x10DE, AMD 0x1002) e/ou pelo texto do renderizador do GLES
+// (ex.: "Mali-G715", "Adreno (TM) 650"). Se o ID for conhecido ele vale; senao usa o texto.
+GpuFamily gpu_family_detect(uint32_t vulkanVendorId, const std::string& rendererString);
+
+// O que o backend descobriu sobre o dispositivo. Os backends reais preenchem na init(); Null e Software tem valores fixos.
+struct VideoCaps {
+    GpuFamily gpu;
+    std::string vendor, renderer, driver;
+    int  maxTextureSize;
+    bool tileBased;                 // GPU de renderizacao em blocos (Mali, Adreno, PowerVR, Apple): evita carregar/guardar o quadro
+    bool supportsPreRotation;       // o backend consegue girar a imagem para a orientacao da tela (Vulkan no Android)
+    VideoCaps() : gpu(GpuFamily::Unknown), maxTextureSize(0), tileBased(false), supportsPreRotation(false) {}
+};
+
 struct Color { uint8_t r, g, b, a; Color() : r(0), g(0), b(0), a(255) {} Color(uint8_t R, uint8_t G, uint8_t B, uint8_t A = 255) : r(R), g(G), b(B), a(A) {} };
 struct Rect  { float x, y, w, h; Rect() : x(0), y(0), w(0), h(0) {} Rect(float X, float Y, float W, float H) : x(X), y(Y), w(W), h(H) {} };
 
@@ -66,6 +84,11 @@ public:
     virtual Backend backend() const = 0;
     virtual bool init(const VideoConfig& cfg) = 0;
     virtual void shutdown() = 0;
+    // Informacoes do dispositivo (valido depois de init). Os ajustes por driver ficam DENTRO dos backends, escolhidos por caps().gpu.
+    virtual const VideoCaps& caps() const = 0;
+    // Orientacao atual da tela em graus (0, 90, 180, 270). Vulkan no Android usa para pre-rotacionar e evitar o giro do compositor.
+    // Os demais backends ignoram.
+    virtual void set_display_rotation(int degrees) { (void)degrees; }
     // A janela real mudou (rotacao no Android, redimensionar no PC). O backend recalcula viewport/letterbox.
     virtual void resize(int windowWidth, int windowHeight) = 0;
 

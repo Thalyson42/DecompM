@@ -22,6 +22,18 @@ int main() {
     CHECK(create(Backend::GLES, &err) == nullptr && !err.empty(), "GLES ainda nao existe e deve explicar por que");
     CHECK(create(Backend::Vulkan, &err) == nullptr, "Vulkan ainda nao existe");
 
+    // --- familia da GPU (base para os ajustes por driver; Mali primeiro) ---
+    CHECK(gpu_family_detect(0x13B5, "") == GpuFamily::Mali, "vendorID da ARM = Mali");
+    CHECK(gpu_family_detect(0, "Mali-G715") == GpuFamily::Mali, "texto Mali-G715 = Mali");
+    CHECK(gpu_family_detect(0, "Adreno (TM) 650") == GpuFamily::Adreno && gpu_family_detect(0x5143, "") == GpuFamily::Adreno, "Adreno");
+    CHECK(gpu_family_detect(0x1010, "") == GpuFamily::PowerVR && gpu_family_detect(0, "PowerVR Rogue GE8320") == GpuFamily::PowerVR, "PowerVR");
+    CHECK(gpu_family_detect(0x13B5, "Adreno") == GpuFamily::Mali, "o vendorID conhecido vale mais que o texto");
+    CHECK(gpu_family_detect(0, "algo novo") == GpuFamily::Unknown, "texto desconhecido = Unknown");
+    {
+        std::unique_ptr<Video> sv = create(Backend::Software, &err);
+        CHECK(sv->caps().gpu == GpuFamily::Software && !sv->caps().tileBased, "o backend de software se declara Software");
+        sv->set_display_rotation(90);   // nao deve quebrar (no-op)
+    }
     // --- backend Null: grava a sequencia de chamadas ---
     {
         std::unique_ptr<Video> v = create(Backend::Null, &err);

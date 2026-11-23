@@ -5,7 +5,8 @@ namespace video {
 
 class NullVideoImpl : public NullVideo {
 public:
-    NullVideoImpl() : nextTex_(1), nextPal_(1), inFrame_(false) {}
+    NullVideoImpl() : nextTex_(1), nextPal_(1), inFrame_(false) { caps_.renderer = "null"; }
+    const VideoCaps& caps() const { return caps_; }
     Backend backend() const { return Backend::Null; }
     bool init(const VideoConfig& cfg) { cfg_ = cfg; calls_.clear(); return true; }
     void shutdown() {}
@@ -24,7 +25,7 @@ public:
     const std::string& last_error() const { return err_; }
     const std::vector<Call>& calls() const { return calls_; }
 private:
-    VideoConfig cfg_; uint32_t nextTex_, nextPal_; bool inFrame_; std::vector<Call> calls_; std::string err_;
+    VideoCaps caps_; VideoConfig cfg_; uint32_t nextTex_, nextPal_; bool inFrame_; std::vector<Call> calls_; std::string err_;
 };
 
 std::unique_ptr<Video> create_null() { return std::unique_ptr<Video>(new NullVideoImpl()); }
