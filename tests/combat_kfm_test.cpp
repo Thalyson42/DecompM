@@ -10,6 +10,7 @@ static int fails = 0;
 struct Duel {
     Engine e1, e2; Player p1, p2;
     Duel(const Character& ch, float dist) : e1(ch), e2(ch) {
+        e1.init_player(p1); e2.init_player(p2);
         e1.enter_state(p1, 0); e2.enter_state(p2, 0);
         p1.ctrl = p2.ctrl = true; p1.facing = 1; p2.facing = -1; p1.posX = 0; p2.posX = dist;
         p1.enemy = &p2; p2.enemy = &p1;
@@ -28,10 +29,12 @@ int main(int argc, char** argv) {
         Duel d(ch, 50);
         d.p1.commands.insert("x");
         int hitTick = -1;
-        for (int t = 0; t < 12; ++t) { d.step(); d.p1.commands.clear(); if (hitTick < 0 && d.p2.stateNo == 5000) hitTick = t; }
-        std::printf("A) hit no tick %d, vida p2=%d, p2 estado=%d\n", hitTick, d.p2.life, d.p2.stateNo);
+        for (int t = 0; t < 12; ++t) { d.step(); d.p1.commands.clear(); if (hitTick < 0 && d.p2.stateNo == 5000) { hitTick = t; break; } }
+        std::printf("A) hit no tick %d, vida p2=%d (pendente %d), p2 estado=%d\n", hitTick, d.p2.life, d.p2.gethitDamage, d.p2.stateNo);
         CHECK(hitTick == 3, "o hit deveria ocorrer no tick 3 (AnimElem = 3), ocorreu em %d", hitTick);
-        CHECK(d.p2.life == 1000 - 23, "p2 deveria perder 23 de vida, vida = %d", d.p2.life);
+        CHECK(d.p2.life == 1000 && d.p2.gethitDamage == 23, "o dano fica pendente no tick do hit (vida=%d, pendente=%d)", d.p2.life, d.p2.gethitDamage);
+        d.step();
+        CHECK(d.p2.life == 1000 - 23 && d.p2.gethitDamage == 0, "no tick seguinte a vida cai 23 (vida=%d)", d.p2.life);
         CHECK(d.p1.moveHit && d.p1.moveContact, "p1 deveria ter MoveHit e MoveContact");
         CHECK(d.p2.moveType == 'H', "p2 deveria estar em movetype H, esta em %c", d.p2.moveType);
     }
@@ -98,8 +101,10 @@ int main(int argc, char** argv) {
         n.e1.tick(n.p1); n.e2.tick(n.p2);
         n.p1.hitdef.groundType = 0;
         resolve_hits(n.p1, n.e1, n.p2, n.e2);
-        CHECK(n.p2.stateNo == 0 && n.p2.life == 1000, "None so pausa: estado 0 e vida intacta (estado=%d vida=%d)", n.p2.stateNo, n.p2.life);
-        CHECK(n.p2.pauseTime == 8 && n.p1.pauseTime == 8, "None ainda pausa os dois (p1=%d p2=%d)", n.p1.pauseTime, n.p2.pauseTime);
+        CHECK(n.p2.stateNo == 0 && n.p2.life == 1000, "None: sem estado e sem dano (estado=%d vida=%d)", n.p2.stateNo, n.p2.life);
+        CHECK(n.p2.pauseTime == 0 && n.p1.pauseTime == 0, "None nao pausa ninguem (p1=%d p2=%d)", n.p1.pauseTime, n.p2.pauseTime);
+        CHECK(!n.p1.moveHit && !n.p1.moveContact, "None nao gera MoveHit nem MoveContact");
+        CHECK(n.p2.gethitDamage == 0, "None nao gera dano pendente");
     }
     // G) guarda: p2 segura "tras" quando p1 ataca dentro da guard.dist -> estado 120 -> guarda o soco (150), sem dano
     {
@@ -124,7 +129,7 @@ int main(int argc, char** argv) {
     {
         Duel d(ch, 50);
         d.p1.commands.insert("x");
-        for (int t = 0; t < 4; ++t) { d.step(); d.p1.commands.clear(); }
+        for (int t = 0; t < 5; ++t) { d.step(); d.p1.commands.clear(); }      // hit no tick 3, vida cai no tick seguinte
         CHECK(d.p2.life == 1000 - 23 && !d.p1.moveGuarded, "sem holdback o soco acerta (vida=%d)", d.p2.life);
         Duel f(ch, 200);
         f.p2.commands.insert("holdback");
@@ -143,7 +148,7 @@ int main(int argc, char** argv) {
         CHECK(d.p2.posX > 50.0f, "a guarda deveria empurrar p2 para tras (posX = %f)", (double)d.p2.posX);
         CHECK(d.p2.stateNo == 0 && d.p2.ctrl, "(150 -> 151 -> 130 -> 140 -> 0) p2 deveria voltar ao estado 0 com controle (estado=%d ctrl=%d)", d.p2.stateNo, (int)d.p2.ctrl);
     }
-    // J) guarda que mataria (vida - dano de guarda < 1) vira um hit normal (FUN_0043E480, sem chip-kill)
+    // J) guarda que mataria (vida - dano de guarda < 1) vira um hit normal (Player_Hit 0x43E480, sem chip-kill)
     {
         Duel d(ch, 50);
         d.p2.commands.insert("holdback");
@@ -154,7 +159,8 @@ int main(int argc, char** argv) {
         d.p1.hitdef.guardDamage = 30; d.p2.life = 20;
         resolve_hits(d.p1, d.e1, d.p2, d.e2);
         CHECK(d.p2.stateNo == 5000 && d.p1.moveHit && !d.p1.moveGuarded, "guarda letal deveria virar hit normal (estado=%d)", d.p2.stateNo);
-        CHECK(d.p2.life == 0, "vida deveria chegar a 0, vida = %d", d.p2.life);
+        d.e2.tick(d.p2);
+        CHECK(d.p2.life == 0, "vida deveria chegar a 0 no tick seguinte, vida = %d", d.p2.life);
     }
     // K) hit que chega de longe (alem da guard.dist) mas com o defensor ja segurando "tras" e oponente atacando: o flag
     //    de guarda vale mesmo sem entrar no estado 120 (exe marca +0xEE8 antes de checar a distancia)
@@ -202,6 +208,137 @@ int main(int argc, char** argv) {
         World wall; wall.stageLeft = -3.0f; wall.stageRight = 100.0f;
         step_frame(e.p1, e.e1, e.p2, e.e2, wall);
         CHECK(e.p1.posX == -3.0f, "o limite do cenario segura p1 em -3 (p1=%f)", (double)e.p1.posX);
+    }
+
+    // ===== Itens 1-6 da revisao (cada regra confirmada no assembly; ver docs/functions.md) =====
+    // Atalho: monta um duelo, deixa o HitDef do soco ativo (tick 3) e devolve antes de resolver o hit.
+    struct Ready { Duel d; Ready(const Character& c, float dist) : d(c, dist) {
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { d.step(); d.p1.commands.clear(); }
+        d.e1.tick(d.p1); d.e2.tick(d.p2);              // tick 3: HitDef ativo
+    } };
+
+    // 1) hitflag: H so em pe, L so agachado, M os dois (FUN_00441200: S exige bit 4, C exige bit 8)
+    CHECK(hitflags_parse("MAF") == 0x3e && hitflags_parse("maf") == 0x3e, "MAF = 0x3E");
+    CHECK(hitflags_parse("MAF-") == 0x3c && hitflags_parse("MAF+") == 0x13e, "'-' limpa o bit 2 e '+' liga 0x100");
+    CHECK(hitflags_parse("D") == 0x42 && hitflags_parse("HLAF") == 0x3e && hitflags_parse("") == 2, "D = 0x42; letras avulsas; vazio = 2");
+    {
+        Player t; t.stateType = 'S'; t.moveType = 'I';
+        CHECK(hitflag_matches(t, hitflags_parse("H")) && !hitflag_matches(t, hitflags_parse("L")), "em pe: H sim, L nao");
+        t.stateType = 'C';
+        CHECK(!hitflag_matches(t, hitflags_parse("H")) && hitflag_matches(t, hitflags_parse("L")), "agachado: H NAO, L sim");
+        CHECK(hitflag_matches(t, hitflags_parse("M")), "agachado: M sim");
+        t.stateType = 'A';
+        CHECK(!hitflag_matches(t, hitflags_parse("M")) && hitflag_matches(t, hitflags_parse("A")), "no ar: so A");
+        Ready r(ch, 50);
+        r.d.p2.stateType = 'C';
+        r.d.p1.hitdef.hitflag = hitflags_parse("H");
+        resolve_hits(r.d.p1, r.d.e1, r.d.p2, r.d.e2);
+        CHECK(r.d.p2.stateNo == 0 && r.d.p2.gethitDamage == 0, "hitflag H nao acerta agachado (estado=%d)", r.d.p2.stateNo);
+        Ready q(ch, 50);
+        q.d.p2.stateType = 'C';
+        q.d.p1.hitdef.hitflag = hitflags_parse("L");
+        resolve_hits(q.d.p1, q.d.e1, q.d.p2, q.d.e2);
+        CHECK(q.d.p2.stateNo == 5010, "hitflag L acerta agachado e leva ao 5010 (estado=%d)", q.d.p2.stateNo);
+    }
+    // 2) flag F: alvo caindo so e atingido se o hitflag tem F; '-' / '+' e movetype H
+    {
+        Player t; t.stateType = 'A'; t.moveType = 'H'; t.gethit.fall = 1;
+        CHECK(!hitflag_matches(t, hitflags_parse("MA")) && hitflag_matches(t, hitflags_parse("MAF")), "caindo: exige F");
+        t.gethit.fall = 0;
+        CHECK(hitflag_matches(t, hitflags_parse("MA")), "em movetype H, o padrao (bit 2) deixa acertar");
+        CHECK(!hitflag_matches(t, hitflags_parse("MA-")), "'-' nao acerta quem esta apanhando");
+        CHECK(hitflag_matches(t, hitflags_parse("MA+")), "'+' acerta quem esta apanhando (sem guardar)");
+        t.moveType = 'I';
+        CHECK(!hitflag_matches(t, hitflags_parse("MA+")), "'+' nao acerta quem NAO esta apanhando");
+        t.moveType = 'H'; t.guarding = true;
+        CHECK(!hitflag_matches(t, hitflags_parse("MA+")), "'+' nao acerta quem esta apanhando mas guardando");
+    }
+    // 3) type None: sem dano, sem estado, sem pausa (atacante e oponente) — testado acima em F; aqui o air.type None
+    {
+        Ready r(ch, 50);
+        r.d.p2.stateType = 'A'; r.d.p2.posY = -30.0f;   // no ar
+        r.d.p1.hitdef.airType = 0; r.d.p1.hitdef.hitflag = hitflags_parse("A");
+        r.d.p2.moveType = 'I';
+        resolve_hits(r.d.p1, r.d.e1, r.d.p2, r.d.e2);
+        CHECK(r.d.p2.stateNo == 0 && r.d.p1.pauseTime == 0 && r.d.p2.pauseTime == 0 && r.d.p2.gethitDamage == 0, "air.type None no ar: nada acontece");
+    }
+    // 4) tempo de hit: yvel != 0 usa air.hittime e NAO mexe no slidetime; yvel == 0 usa ground.hittime/slidetime
+    {
+        Ready r(ch, 50);
+        r.d.p1.hitdef.groundVelY = -3.0f; r.d.p1.hitdef.groundVelYSet = true; r.d.p1.hitdef.airHitTime = 17; r.d.p1.hitdef.groundHitTime = 11;
+        r.d.p2.gethit.slideTime = 99;
+        resolve_hits(r.d.p1, r.d.e1, r.d.p2, r.d.e2);
+        CHECK(r.d.p2.gethit.hitTime == 17, "yvel != 0 deveria usar air.hittime (17), usou %d", r.d.p2.gethit.hitTime);
+        CHECK(r.d.p2.gethit.slideTime == 99, "yvel != 0 nao define o slidetime (ficou %d)", r.d.p2.gethit.slideTime);
+        Ready q(ch, 50);
+        q.d.p1.hitdef.airHitTime = 17; q.d.p1.hitdef.groundHitTime = 11; q.d.p1.hitdef.groundSlideTime = 5;
+        q.d.p2.gethit.slideTime = 99;
+        resolve_hits(q.d.p1, q.d.e1, q.d.p2, q.d.e2);
+        CHECK(q.d.p2.gethit.hitTime == 11 && q.d.p2.gethit.slideTime == 5, "yvel == 0 usa ground (hit=%d slide=%d)", q.d.p2.gethit.hitTime, q.d.p2.gethit.slideTime);
+        // queda com yvel omitido (0): o exe poe -0.001 e entao usa air.hittime
+        Ready f(ch, 50);
+        f.d.p1.hitdef.hitflag |= 1; f.d.p1.hitdef.airHitTime = 17;
+        resolve_hits(f.d.p1, f.d.e1, f.d.p2, f.d.e2);
+        CHECK(f.d.p2.gethit.yvel < 0.0f && f.d.p2.gethit.yvel > -0.002f && f.d.p2.gethit.hitTime == 17, "fall com yvel 0: -0.001 e air.hittime (yvel=%f hit=%d)", (double)f.d.p2.gethit.yvel, f.d.p2.gethit.hitTime);
+    }
+    // 5) dano: pendente aplicado no tick; defence; minimo 1; kill; alive
+    {
+        Player t; t.life = 100; t.defenceMul = 1.0f;
+        CHECK(hit_damage(t, 23, 1) == 23, "dano simples");
+        t.defenceMul = 0.5f;  CHECK(hit_damage(t, 23, 1) == 12, "defence 0.5: trunc(11.5+0.5) = 12, deu %d", hit_damage(t, 23, 1));
+        t.defenceMul = 0.01f; CHECK(hit_damage(t, 23, 1) == 1, "o minimo 1 vale quando o defence zera o dano, deu %d", hit_damage(t, 23, 1));
+        CHECK(hit_damage(t, 0, 1) == 0, "dano 0 continua 0");
+        t.defenceMul = 1.0f;
+        CHECK(hit_damage(t, 150, 1) == 150, "kill = 1: pode passar da vida");
+        CHECK(hit_damage(t, 150, 0) == 99, "kill = 0: deixa 1 de vida (100 - 1 = 99)");
+        t.alive = false;
+        CHECK(hit_damage(t, 150, 0) == 150, "kill = 0 so protege quem esta vivo");
+        t.alive = true; t.gethitDamage = 40;
+        CHECK(hit_damage(t, 23, 1) == 23, "so a parcela nova e devolvida");
+        // QUIRK do exe (0x43F971-0x43F97F): o teto vira (vida - pendente) - 1 = 59 e o pendente (40) e subtraido de novo: devolve 19
+        CHECK(hit_damage(t, 100, 0) == 19, "kill = 0 com dano pendente reproduz o quirk do exe: 19, deu %d", hit_damage(t, 100, 0));
+        // no motor: o padrao do HitDef e kill = 1; vida chega a 0 so no tick seguinte
+        Ready k(ch, 50);
+        k.d.p2.life = 20;
+        resolve_hits(k.d.p1, k.d.e1, k.d.p2, k.d.e2);
+        CHECK(k.d.p2.life == 20 && k.d.p2.gethitDamage == 23, "o dano nao e aplicado na hora");
+        k.d.e2.tick(k.d.p2);
+        CHECK(k.d.p2.life == 0, "kill = 1 (padrao): vida chega a 0 (vida=%d)", k.d.p2.life);
+        Ready n(ch, 50);
+        n.d.p2.life = 20; n.d.p1.hitdef.kill = 0;
+        resolve_hits(n.d.p1, n.d.e1, n.d.p2, n.d.e2);
+        n.d.e2.tick(n.d.p2);
+        CHECK(n.d.p2.life == 1, "kill = 0: a vida para em 1 (vida=%d)", n.d.p2.life);
+        Ready m(ch, 50);
+        m.d.p2.defenceMul = 100.0f / 120.0f;
+        resolve_hits(m.d.p1, m.d.e1, m.d.p2, m.d.e2);
+        CHECK(m.d.p2.gethitDamage == 19, "defence 120: trunc(23*0.8333+0.5) = 19, deu %d", m.d.p2.gethitDamage);
+        // init_player le data.life e data.defence do KFM
+        Player ip; Engine ie(ch); ie.init_player(ip);
+        CHECK(ip.life == 1000 && ip.lifeMax == 1000, "init_player: vida do KFM");
+        std::printf("   KFM: data.defence -> defenceMul = %.4f\n", (double)ip.defenceMul);
+    }
+    // 6) hit por tras: High <-> Low so para animtype Light/Medium/Hard (0-2)
+    {
+        for (int at = 0; at <= 5; ++at) {
+            Ready r(ch, 50);
+            r.d.p2.facing = 1;                                  // por tras
+            r.d.p1.hitdef.animType = at;
+            r.d.p1.hitdef.groundVelY = -3.0f; r.d.p1.hitdef.groundVelYSet = true;   // yvel != 0: nao converte Back em Hard
+            resolve_hits(r.d.p1, r.d.e1, r.d.p2, r.d.e2);
+            int want = (at <= 2) ? 2 : 1;
+            CHECK(r.d.p2.gethit.groundType == want, "animtype %d por tras: groundtype deveria ser %d, foi %d", at, want, r.d.p2.gethit.groundType);
+        }
+        // yvel == 0 e animtype Back (3): vira Hard (2) e entao a troca vale
+        Ready b(ch, 50);
+        b.d.p2.facing = 1; b.d.p1.hitdef.animType = 3;
+        resolve_hits(b.d.p1, b.d.e1, b.d.p2, b.d.e2);
+        CHECK(b.d.p2.gethit.animType == 2 && b.d.p2.gethit.groundType == 2, "Back no chao vira Hard e depois troca (anim=%d tipo=%d)", b.d.p2.gethit.animType, b.d.p2.gethit.groundType);
+        // de frente nunca troca
+        Ready f(ch, 50);
+        resolve_hits(f.d.p1, f.d.e1, f.d.p2, f.d.e2);
+        CHECK(f.d.p2.gethit.groundType == 1, "de frente nao troca (tipo=%d)", f.d.p2.gethit.groundType);
     }
     std::printf(fails ? "%d falha(s)\n" : "tudo certo\n", fails);
     return fails ? 1 : 0;

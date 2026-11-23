@@ -1,16 +1,24 @@
 #pragma once
 #include "engine/player.h"
 
-// Deteccao e aplicacao de hits entre dois jogadores. Baseado em docs/cns.html e docs/sctrls.html (HitDef);
-// NAO verificado no exe (a aplicacao de hits parece ficar em FUN_0043ECE0). Ainda sem guarda, sem prioridade
-// entre golpes simultaneos, sem NotHitBy/HitBy, sem juggle nem fall.
+// Deteccao e aplicacao de hits entre dois jogadores.
+// Fonte da verdade: assembly do mugen.exe 1.1b1. Funcoes do exe portadas aqui (nomes do unleashed, so como referencia):
+//   0x0043E280 Player_CanHit        0x00441200 Player_HitFlagMatches   0x0043E480 Player_Hit
+//   0x0043ECE0 HitDef_Apply         0x0043F930 Player_HitDamage        0x0043F990 Player_Guard
+// NAO portado ainda: ReversalDef (0x43FC60/0x43FD80), prioridade entre golpes, HitBy/NotHitBy, KO, juggle, projeteis.
 struct WorldBox { float x1, y1, x2, y2; };
 
 // Caixa de colisao em coordenadas do mundo (espelhada quando o jogador olha para a esquerda).
 WorldBox world_box(const Player& p, const AirBox& b);
 bool boxes_overlap(const WorldBox& a, const WorldBox& b);
 
-// Tenta um golpe de 'atk' em 'def'. Retorna true se acertou (e aplicou o hit).
+// Porte de Player_HitFlagMatches (0x00441200): o hitflag/guardflag 'flags' permite acertar 'p' no estado atual?
+bool hitflag_matches(const Player& p, uint32_t flags);
+// Porte de Player_HitDamage (0x0043F930): dano deste golpe somado ao pendente, com defence, minimo 1 e a regra de kill.
+// Devolve apenas a parcela NOVA (o dano pendente ja existente nao entra).
+int hit_damage(const Player& p, int damage, int kill);
+
+// Tenta um golpe de 'atk' em 'def'. Retorna true se houve contato (acerto, guarda ou tipo None).
 bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk);
 // Roda os dois sentidos (P1 -> P2 e P2 -> P1).
 void resolve_hits(Player& a, Engine& ea, Player& b, Engine& eb);

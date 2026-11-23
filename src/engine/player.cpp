@@ -8,7 +8,8 @@ static std::string lower(std::string s) { for (size_t i = 0; i < s.size(); ++i) 
 
 Player::Player() : stateNo(0), prevStateNo(0), time(0), ctrl(false), anim(0), animElapsed(0),
     posX(0), posY(0), velX(0), velY(0), facing(1), life(1000), power(0),
-    pauseTime(0), hitTime(0), moveContact(false), moveHit(false), moveGuarded(false), guarding(false), enemy(0), defaultGuardDist(-1), life0(1000),
+    pauseTime(0), hitTime(0), moveContact(false), moveHit(false), moveGuarded(false), guarding(false),
+    gethitDamage(0), defenceMul(1.0f), lifeMax(1000), alive(true), enemy(0), defaultGuardDist(-1), life0(1000),
     stateType('S'), moveType('I'), physics('N') {
     for (int i = 0; i < 60; ++i) var[i] = 0;
     for (int i = 0; i < 40; ++i) fvar[i] = 0;
@@ -68,7 +69,7 @@ struct PlayerCtx : ExprContext {
         if (n == "movecontact") { out = V::Int(p.moveContact ? 1 : 0); return true; }
         if (n == "movehit")     { out = V::Int(p.moveHit ? 1 : 0); return true; }
         if (n == "moveguarded") { out = V::Int(p.moveGuarded ? 1 : 0); return true; }
-        if (n == "inguarddist") {   // porte de FUN_004347a0: oponente atacando e a distancia a frente dele dentro da guard.dist
+        if (n == "inguarddist") {   // porte de Player_InGuardDist (0x004347A0): oponente atacando e a distancia a frente dele dentro da guard.dist
             const Player* o = p.enemy; int r = 0;
             if (o && o->moveType == 'A') {
                 int gd = o->hitdef.guardDist >= 0 ? o->hitdef.guardDist : o->defaultGuardDist;
@@ -195,6 +196,31 @@ int Engine::anim_looptime(int action) const {
     return it->second.looptime();
 }
 
+uint32_t hitflags_parse(const std::string& str) {
+    uint32_t m = 2;
+    for (size_t i = 0; i < str.size(); ++i) {
+        switch (std::tolower((unsigned char)str[i])) {
+            case '+': m |= 0x100; break;
+            case '-': m &= ~2u; break;
+            case 'h': m |= 4; break;
+            case 'm': m |= 0xc; break;
+            case 'l': m |= 8; break;
+            case 'a': m |= 0x10; break;
+            case 'f': m |= 0x20; break;
+            case 'd': m |= 0x40; break;
+            case 'p': m |= 0x80; break;
+            default: break;
+        }
+    }
+    return m;
+}
+
+void Engine::init_player(Player& p) const {
+    float k;
+    if (ch_.constant("data.life", k)) { p.life = (int)k; p.lifeMax = (int)k; }
+    if (ch_.constant("data.defence", k) && k > 0) p.defenceMul = 100.0f / k;
+}
+
 const AirFrame* Engine::current_frame(const Player& p) const {
     std::map<int, AirAction>::const_iterator it = ch_.anims.find(p.anim);
     if (it == ch_.anims.end() || it->second.frames.empty()) return 0;
@@ -313,7 +339,8 @@ void Engine::exec_hitdef(Player& p, const CnsController& c) {
     std::string a1 = lower(first_token(attr));
     for (size_t i = 0; i < a1.size(); ++i) { if (a1[i] == 's') h.attrTypes |= 1; else if (a1[i] == 'c') h.attrTypes |= 2; else if (a1[i] == 'a') h.attrTypes |= 4; }
     if (comma != std::string::npos) h.attrKind = first_token(attr.substr(comma + 1));
-    std::string hf = raw_param(c, "hitflag"); if (!hf.empty()) h.hitflag = first_token(hf);
+    // hitflag omitido -> 0x3E; presente -> HitFlags_Parse; guardflag omitido -> 0 (confirmado em 0x44FE6F-0x44FEAA)
+    std::string hf = raw_param(c, "hitflag"); if (!hf.empty()) h.hitflag = hitflags_parse(first_token(hf));
     std::vector<ExprValue> v; int iv; float fv;
     if (param_values(p, c, "damage", v)) { if (v.size() > 0) h.damage = to_i(v[0]); if (v.size() > 1) h.guardDamage = to_i(v[1]); }
     if (param_values(p, c, "pausetime", v)) { if (v.size() > 0) h.pause1 = to_i(v[0]); if (v.size() > 1) h.pause2 = to_i(v[1]); }
@@ -327,10 +354,12 @@ void Engine::exec_hitdef(Player& p, const CnsController& c) {
     std::string at = lower(first_token(raw_param(c, "animtype")));
     h.animType = at == "medium" ? 1 : at == "hard" ? 2 : at == "back" ? 3 : at == "up" ? 4 : at == "diagup" ? 5 : 0;
     if (param_float(p, c, "yaccel", fv)) h.yaccel = fv;
-    if (param_int(p, c, "fall", iv)) h.fall = iv;
+    if (param_int(p, c, "fall", iv)) { h.fall = iv; if (iv != 0) h.hitflag |= 1; }   // bit 0 de hitflag = "sempre cai" (consumo: 0x43EE01)
     if (param_values(p, c, "priority", v) && !v.empty()) h.priority = to_i(v[0]);
     if (param_int(p, c, "hitonce", iv)) h.hitOnce = iv != 0;
-    h.guardFlag = first_token(raw_param(c, "guardflag"));
+    { std::string gf = raw_param(c, "guardflag"); h.guardflag = gf.empty() ? 0 : hitflags_parse(first_token(gf)); }
+    if (param_int(p, c, "kill", iv)) h.kill = iv != 0;
+    if (param_int(p, c, "guard.kill", iv)) h.guardKill = iv != 0;
     if (param_int(p, c, "guard.dist", iv)) h.guardDist = iv; else h.guardDist = p.defaultGuardDist;
     if (param_values(p, c, "guard.pausetime", v)) { if (v.size() > 0) h.guardPause1 = to_i(v[0]); if (v.size() > 1) h.guardPause2 = to_i(v[1]); }
     if (param_float(p, c, "guard.velocity", fv)) h.guardVelX = fv;
@@ -387,7 +416,7 @@ bool Engine::exec(Player& p, const CnsController& c) {
     if (t == "hitdef") { exec_hitdef(p, c); return false; }
     if (t == "hitvelset") {
         // x/y = 1: usa a velocidade do golpe recebido (GetHitVar xvel/yvel). xvel e relativo ao lado de quem apanha.
-        if (param_int(p, c, "x", iv) && iv != 0) p.velX = p.gethit.xvel;   // absoluto (FUN_0043ECE0: valor * -facing do atacante)
+        if (param_int(p, c, "x", iv) && iv != 0) p.velX = p.gethit.xvel;   // absoluto (HitDef_Apply (0x0043ECE0): valor * -facing do atacante)
         if (param_int(p, c, "y", iv) && iv != 0) p.velY = p.gethit.yvel;
         return false;
     }
@@ -396,7 +425,7 @@ bool Engine::exec(Player& p, const CnsController& c) {
     return false;
 }
 
-// Porte de FUN_00434db0 (mugen.exe 1.1b1), parte que escolhe a "intencao" de movimento.
+// Porte de Player_UpdateInput (0x00434DB0) (mugen.exe 1.1b1), parte que escolhe a "intencao" de movimento.
 // Entradas lidas dos comandos padrao holdfwd/holdback/holdup/holddown (o exe le as teclas direto).
 // NAO portado ainda: guarda automatica (intencao 0x28 -> estado 120), pulo no ar (intencao 10 -> estado 45),
 // a limpeza do campo +0x248, o flag +0x2b2 (bloqueio de andar) e a trava de rodada (+0x12754 == 3).
@@ -414,7 +443,7 @@ void Engine::default_movement(Player& p) {
     }
     if (p.stateType == 'C' && down) keepCrouch = true;
     if (fwd && back) intent = -1;        // as duas direcoes juntas cancelam qualquer intencao
-    // Guarda automatica (FUN_00434db0 + FUN_004347a0): segurando "trás", sem "cima", com controle parado ou ja
+    // Guarda automatica (Player_UpdateInput (0x00434DB0) + Player_InGuardDist (0x004347A0)): segurando "trás", sem "cima", com controle parado ou ja
     // guardando (151/153/155), e um oponente atacando dentro da guard.dist -> intencao 0x28 (sobrepoe as demais).
     // NAO portado: as flags por statetype do personagem (+0x2AC/+0x2AD/+0x2AE) e projeteis.
     bool guardIntent = false;
@@ -460,7 +489,7 @@ void Engine::default_movement(Player& p) {
     if (p.stateType == 'C' && p.ctrl && !keepCrouch) enter_state(p, 12);
 }
 
-// Porte da parte de fisica de FUN_0043c480 (mugen.exe 1.1b1), na ordem do exe:
+// Porte da parte de fisica de Player_Update (0x0043C480) (mugen.exe 1.1b1), na ordem do exe:
 //  1) pos += vel (a velocidade guardada ja inclui o lado; VelSet/VelAdd multiplicam por facing)
 //  2) physics S: vel.x *= movement.stand.friction;  C: vel.x *= movement.crouch.friction
 //     A: vel.y += movement.yaccel; se vel.y > 0, pos.y > 0 e stateno != 105 -> estado 52 (pouso), Time = 0
@@ -481,12 +510,20 @@ void Engine::physics(Player& p) {
 }
 
 void Engine::tick(Player& p) {
-    // Pausa de hit (hitpause / shake): o exe decrementa a pausa no lugar de mover (FUN_0043c480).
+    // Pausa de hit (hitpause / shake): o exe decrementa a pausa no lugar de mover (Player_Update (0x0043C480)).
     // Durante a pausa so rodam controllers com ignorehitpause (docs); Time e animacao ficam congelados.
     bool paused = p.pauseTime > 0;
+    if (!paused) default_movement(p);
+    // Dano pendente (Player_Update 0x43C7AB, antes do teste de pausa em 0x43C988): vida = vida - dano, entre 0 e lifeMax;
+    // zera o pendente. Roda mesmo durante o hitpause. NAO portado: o desvio com o estado global 3 e a flag de depuracao.
+    if (p.gethitDamage != 0) {
+        int nl = p.life - p.gethitDamage;
+        p.life = nl < 0 ? 0 : nl > p.lifeMax ? p.lifeMax : nl;
+        p.gethitDamage = 0;
+    }
     if (!paused) {
-        default_movement(p); physics(p);
-        // Fim da guarda "implementado no motor" (comentario [State 140, 5] do common1.cns; codigo em FUN_0043C480,
+        physics(p);
+        // Fim da guarda "implementado no motor" (comentario [State 140, 5] do common1.cns; codigo em Player_Update (0x0043C480),
         // 0x43CA12-0x43CA75): estado 140 com Time >= duracao da animacao -> 0 (em pe), 11 (agachado) ou 51 (no ar).
         if (p.stateNo == 140) {
             int lt = anim_looptime(p.anim);

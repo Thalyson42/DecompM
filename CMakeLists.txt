@@ -32,7 +32,16 @@ add_library(decompm_engine src/engine/character.h src/engine/character.cpp src/e
 target_link_libraries(decompm_engine decompm_parser)
 target_include_directories(decompm_engine PUBLIC src)
 
+# Interface de video (o motor so conhece src/video/video.h). Backends reais entram depois, atras de opcoes:
+#   -DDECOMPM_VIDEO_GLES=ON   (futuro)    -DDECOMPM_VIDEO_VULKAN=ON   (futuro)
+add_library(decompm_video src/video/video.h src/video/video_null.h src/video/video.cpp
+            src/video/video_null.cpp src/video/video_soft.cpp)
+target_include_directories(decompm_video PUBLIC src)
+
 enable_testing()
+add_executable(video_test tests/video_test.cpp)
+target_link_libraries(video_test decompm_video)
+add_test(NAME video_test COMMAND video_test)
 add_executable(expr_spec_tests tests/expr_spec_tests.cpp)
 target_link_libraries(expr_spec_tests decompm_parser)
 add_test(NAME expr_spec_tests COMMAND expr_spec_tests)

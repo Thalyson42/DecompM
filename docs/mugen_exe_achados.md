@@ -84,8 +84,7 @@ Ordem do tick no porte: movimento embutido → física → estados -3/-2/-1 e at
 Não portado: hitpause, escala entre localcoords, limiar de atrito do exe, o `z`.
 
 ## Combate (src/engine/combat.*): PRIMEIRA FATIA, baseada na documentação (NÃO verificada no exe)
-Pistas no exe para conferir depois: `FUN_0043D950` → `FUN_0043FD80` (colisão/hits, 8 KB) e `FUN_0043ECE0` (16 KB, grava os estados 5020, 5070
-e 5080 de apanhar). `FUN_0043A9A0` NÃO é de combate: valida que o personagem tem os sprites e animações obrigatórios
+[CORRIGIDO] A aplicação do hit é `Player_Hit` (0x43E480) mais `HitDef_Apply` (0x43ECE0). `0x43FD80` é o `ReversalDef` (`Player_Reverse`). `FUN_0043A9A0` NÃO é de combate: valida que o personagem tem os sprites e animações obrigatórios
 ("%s (%i) missing required sprites/animation actions"), com a lista de estados/animações 10, 11, 12, 20, 21, 40..., 5000...
 No pipeline do frame o hit vem depois da atualização do jogador (`FUN_0043C480`).
 
@@ -97,8 +96,9 @@ Resultado do teste: soco 200 a 50 px acerta no tick 3 (AnimElem = 3), p2 perde 2
 no tick 23, empurrado para 67 px. A 100 px o golpe erra.
 Não implementado: guarda, prioridade entre golpes simultâneos, NotHitBy/HitBy, juggle, fall, cantos da tela, virar para o atacante.
 
-## Combate: o que foi CONFERIDO no exe (FUN_0043FD80, FUN_0043ECE0, FUN_0043F930, FUN_00441410)
-`FUN_0043FD80(atacante, defensor)` aplica o golpe; chama `FUN_0043ECE0(.., defensor, hitdef do atacante, x, y, facing, ..)` para calcular a resposta.
+## Combate: o que foi CONFERIDO no exe (Player_Hit 0x43E480, HitDef_Apply 0x43ECE0, Player_HitDamage 0x43F930)
+[CORRIGIDO: antes este texto atribuía a aplicação do hit à 0x43FD80, que na verdade é o ReversalDef.]
+`Player_Hit(atacante, defensor)` (0x43E480) aplica o golpe; chama `HitDef_Apply(.., defensor, hitdef do atacante, x, y, facing, ..)` para calcular a resposta.
 O HitDef do atacante é uma estrutura a partir do índice 0x48C (offset 0x1230); o "gethit" do defensor fica em +0x10F0..+0x117C.
 Conferido e já aplicado no porte (`src/engine/combat.cpp`):
 - Estado de apanhar: em pé → **5000**; agachado → **5010** (`(statetype != 1 ? 10 : 0) + 5000`); no ar → **5020** (0x139C); tipo Trip (3) → **5070** (0x13CE).
@@ -110,7 +110,7 @@ Conferido e já aplicado no porte (`src/engine/combat.cpp`):
   Existe uma regra de "não matar" (campo +0xF00): o dano é limitado para deixar 1 de vida. NÃO portada (não sei ainda o que liga esse campo).
 - No fim da resposta: `ctrl = 0`, `movetype = H (2)`, `Time = 0`, contador de acertos +1.
 - `FUN_00441410` cria a faísca (spark) do hit; não aplica dano. `FUN_0043C0B0` ajusta o poder (limite 0..máximo).
-- Poder: o atacante ganha `param_1[0x49C]`, limitado ao máximo (ver FUN_0043FD80).
+- Poder: o atacante ganha `param_1[0x49C]`, limitado ao máximo (ver Player_Hit, 0x43E480).
 Ainda por conferir: tempos exatos (hittime/slidetime/ctrltime), `p1stateno`/`p2stateno`, juggle, guarda (flag em hitdef+0xBC), prioridade.
 
 ## Guarda (src/engine/player.cpp, src/engine/combat.cpp)
@@ -139,8 +139,9 @@ Ordem em `FUN_0043D950` (leitura do decompilado):
 2. Decrementa o contador +0x10D4 de cada um (imunidade pós-hit do oponente, a confirmar) e zera +0x1424.
 3. **Empurrão entre corpos** (`FUN_0043DE40`) para cada par de times diferentes: se os dois têm o flag de empurrão (+0x298) e as caixas
    de corpo se sobrepõem, afasta os jogadores (`FUN_0043DF60`, `FUN_0043D8C0`, `FUN_0043D750`). NÃO portado: é um recurso importante que falta.
-4. Para cada par ordenado de times diferentes: `FUN_0043FC60()` (caixas Clsn1 x Clsn2 se sobrepõem + `guardflag`/máscara do oponente) e, se
-   verdadeiro, `FUN_0043FD80(atacante, defensor)` (marca o golpe).
+4. [A RECONFERIR] Para cada par ordenado de times diferentes ele testa os dois casos: `Player_CanReverse` (0x43FC60) → `Player_Reverse` (0x43FD80), que são do
+   ReversalDef, e `Player_CanHit` (0x43E280) → `Player_Hit` (0x43E480). Os passos 4–6 desta lista foram escritos com rótulos errados e serão refeitos
+   quando a prioridade for portada.
 5. **Prioridade** entre golpes simultâneos: compara os campos +0x12AC (prioridade) e +0x12B0 (tipo: 0 Hit, 2 Dodge...) dos dois e grava em
    `jogador+0x122C[outro.id]` se o golpe vale (NÃO portado).
 6. Aplica os golpes permitidos com `FUN_0043E480(atacante, defensor)` e depois `FUN_004405C0` (par a par).

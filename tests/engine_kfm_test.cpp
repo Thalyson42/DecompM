@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
     for (int i = 0; i < 30; ++i) eng.tick(p);
     CHECK(p.stateNo == 0, "sem comandos deveria continuar no estado 0, esta em %d", p.stateNo);
 
-    // 2) andar: o movimento embutido do exe (FUN_00434db0) leva 0 -> 20 ao segurar para frente
+    // 2) andar: o movimento embutido do exe (Player_UpdateInput (0x00434DB0)) leva 0 -> 20 ao segurar para frente
     p.commands.insert("holdfwd");
     eng.tick(p);
     CHECK(p.stateNo == 20, "holdfwd deveria levar ao estado 20, esta em %d", p.stateNo);

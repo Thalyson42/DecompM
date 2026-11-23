@@ -1,6 +1,7 @@
 #pragma once
 #include "engine/character.h"
 #include "parser/expr.h"
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <set>
@@ -10,13 +11,15 @@
 // Estado de um jogador e maquina de estados do MUGEN (um "tick" = 1/60 s).
 // Implementado a partir da descricao de docs/cns.html. Fisica (gravidade, atrito, pouso), colisao, hits e
 // som ainda NAO existem; controllers nao implementados sao contados em 'skipped'.
-// HitDef ativo (controller HitDef). Baseado em docs/sctrls.html; NAO verificado no exe ainda
-// (a aplicacao de hits parece ficar em FUN_0043ECE0, 16 KB, a estudar).
+// HitDef ativo (controller HitDef). Os valores omitidos seguem o parser do exe (hitflag 0x3E, kill 1); o layout NAO e o do exe.
+// (a aplicacao de hits e Player_Hit 0x43E480 + HitDef_Apply 0x43ECE0).
 struct HitDef {
     bool  active;
     int   attrTypes;                 // bit 1 = S, 2 = C, 4 = A (arg1 de "attr")
     std::string attrKind;            // arg2 de "attr", ex.: "NA"
-    std::string hitflag;             // padrao "MAF"
+    uint32_t hitflag;                // mascara (HitFlags_Parse, 0x459FD0); padrao 0x3E; bit 0 = fall
+    uint32_t guardflag;              // mascara; 0 = nao guardavel
+    int   kill, guardKill;           // padrao 1 (exe: push 1 no parser do HitDef)
     int   damage, guardDamage;
     int   pause1, pause2;            // pausetime: congela o atacante / faz o oponente tremer
     int   groundHitTime, groundSlideTime, airHitTime;
@@ -29,12 +32,11 @@ struct HitDef {
     int   priority;
     bool  hitOnce;
     // guarda (docs); kUnset = omitido -> o padrao e resolvido na hora do golpe
-    std::string guardFlag;           // padrao "" (nao pode ser guardado)
     int   guardDist;                 // x-distancia de guarda; padrao = Const(size.attack.dist) (exe: campo 0x4EB)
     int   guardPause1, guardPause2;
     float guardVelX;
     int   guardHitTime, guardSlideTime, guardCtrlTime;
-    HitDef() : active(false), attrTypes(0), hitflag("MAF"), damage(0), guardDamage(0), pause1(0), pause2(0),
+    HitDef() : active(false), attrTypes(0), hitflag(0x3e), guardflag(0), kill(1), guardKill(1), damage(0), guardDamage(0), pause1(0), pause2(0),
         groundHitTime(0), groundSlideTime(0), airHitTime(20), groundVelX(0), groundVelY(0), airVelX(0), airVelY(0), groundVelYSet(false), airVelYSet(false),
         groundType(1), airType(1), animType(0), yaccel(0.35f), fall(0), priority(4), hitOnce(true),
         guardDist(-1), guardPause1(-9999), guardPause2(-9999), guardVelX(-9999.0f),
@@ -65,7 +67,11 @@ struct Player {
     int   pauseTime;                  // hitpause: ticks restantes (atacante) / shake (defensor)
     int   hitTime;                    // ticks restantes no estado de apanhar depois do shake
     bool  moveContact, moveHit, moveGuarded;   // vale ate trocar de estado
-    bool  guarding;                   // exe: campo +0xEE8; recalculado a cada tick por default_movement
+    bool  guarding;                   // exe: campo +0xEE8 (in_guard_dist); recalculado a cada tick por default_movement
+    int   gethitDamage;               // exe: +0x1104; dano pendente, aplicado a vida no proximo tick
+    float defenceMul;                 // exe: +0x1E4 = 100 / Const(data.defence)
+    int   lifeMax;                    // exe: +0x1BC
+    bool  alive;                      // exe: +0xF00 (trigger Alive)
     const Player* enemy;              // oponente (para InGuardDist); definido pelo chamador
     int   defaultGuardDist;           // Const(size.attack.dist); -1 = ainda nao lido
     int   life0;                      // vida inicial (so para informacao)
@@ -75,17 +81,23 @@ struct Player {
     Player();
 };
 
+// Converte as letras de hitflag/guardflag em mascara (porte de HitFlags_Parse, 0x00459FD0): comeca em 2; '-' limpa o bit 2;
+// '+' liga 0x100; H=4, L=8, M=0xC, A=0x10, F=0x20, D=0x40, P=0x80; maiusculas e minusculas valem igual.
+uint32_t hitflags_parse(const std::string& s);
+
 class Engine {
 public:
     explicit Engine(const Character& ch) : ch_(ch) {}
+    // Valores iniciais que vem do personagem: vida, vida maxima e defence (Const(data.life), Const(data.defence)).
+    void init_player(Player& p) const;
     // Entra em um estado (aplica os parametros do Statedef). Falso se o estado nao existe.
     bool enter_state(Player& p, int stateNo);
     // Um tick: estados -3, -2, -1, depois o estado atual; no fim avanca Time e a animacao.
     void tick(Player& p);
-    // Movimento embutido do exe (FUN_00434db0): parado <-> andando (20), agachar (10/11/12), pular (40).
+    // Movimento embutido do exe (Player_UpdateInput (0x00434DB0)): parado <-> andando (20), agachar (10/11/12), pular (40).
     // Roda no inicio de cada tick, antes dos estados -3/-2/-1 e do estado atual. Veja docs/mugen_exe_achados.md.
     void default_movement(Player& p);
-    // Fisica por tick (parte de FUN_0043c480): pos += vel; depois atrito (S/C) ou gravidade + pouso (A).
+    // Fisica por tick (parte de Player_Update (0x0043C480)): pos += vel; depois atrito (S/C) ou gravidade + pouso (A).
     void physics(Player& p);
     // Soma dos tempos da acao (-1 = infinito, 0 = acao inexistente).
     int anim_looptime(int action) const;

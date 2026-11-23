@@ -36,3 +36,6 @@ cmake --build build
 ## Aviso legal
 O MUGEN é freeware de código fechado. Este repositório deve conter apenas código próprio.
 Não inclua o `mugen.exe`, DLLs, personagens, stages, SFF/SND/AIR/CNS originais.
+
+## Vídeo
+`src/video/` tem a interface `video::Video` e os backends Null (grava as chamadas) e Software (referência em CPU). GLES e Vulkan vêm depois; veja `docs/video.md`.
