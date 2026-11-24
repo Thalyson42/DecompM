@@ -156,6 +156,7 @@ bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk)
         g.xvel = gx * (float)(-atk.facing);
         int gstate = def.stateType == 'C' ? 152 : air ? 154 : 150;
         def.ctrl = false;
+        def.airJumpsLeft = 0;                                  // Player_Guard 0x43FAE3: +0x278 = 0
         def.guarding = true;                                   // Player_Guard grava +0xEE8 = 1
         if (engDef.enter_state(def, gstate)) { def.pauseTime = shake; def.hitTime = hit; }
         if (hitOnceOff) atk.hitdef.active = false;
@@ -169,6 +170,7 @@ bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk)
         def.gethitDamage += hit_damage(def, hd.damage, hd.kill);   // 0x43F876-0x43F883: add [tgt+0x1104], dano (aplicado no tick)
         def.guarding = false;                                      // 0x43F6C4: +0xEE8 = 0
         def.ctrl = false;                                          // 0x43F6E0: +0xEE4 = 0
+        def.airJumpsLeft = 0;                                      // 0x43F6D4: +0x278 = 0
         GetHitVars& g = def.gethit; g.damage = hd.damage;
         if (engDef.enter_state(def, state)) {                      // o exe so troca o numero; aqui tambem aplicamos o Statedef
             def.pauseTime = hd.pause2;                             // gethit_shaketime = p2 pausetime (0x43F6E6-0x43F6E9)

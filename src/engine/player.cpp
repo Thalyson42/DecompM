@@ -9,10 +9,11 @@ static std::string lower(std::string s) { for (size_t i = 0; i < s.size(); ++i) 
 Player::Player() : stateNo(0), prevStateNo(0), time(0), ctrl(false), anim(0), animElapsed(0),
     posX(0), posY(0), velX(0), velY(0), facing(1), life(1000), power(0),
     pauseTime(0), hitTime(0), moveContact(false), moveHit(false), moveGuarded(false), guarding(false),
-    gethitDamage(0), defenceMul(1.0f), lifeMax(1000), alive(true), enemy(0), defaultGuardDist(-1), life0(1000),
+    gethitDamage(0), airJumpsLeft(0), inputEvent(0), defenceMul(1.0f), lifeMax(1000), alive(true), enemy(0), defaultGuardDist(-1), life0(1000),
     stateType('S'), moveType('I'), physics('N') {
     for (int i = 0; i < 60; ++i) var[i] = 0;
     for (int i = 0; i < 40; ++i) fvar[i] = 0;
+    for (int i = 0; i < 8; ++i) assertFlags[i] = 0;
 }
 
 // ---------------------------------------------------------------- contexto dos triggers
@@ -420,6 +421,23 @@ bool Engine::exec(Player& p, const CnsController& c) {
         if (param_int(p, c, "y", iv) && iv != 0) p.velY = p.gethit.yvel;
         return false;
     }
+    if (t == "assertspecial") {
+        // Parser em 0x4592A4 (cadeia de stricmp; ids conferidos: nostandguard 0, nocrouchguard 1, noairguard 2, nowalk 6) e executor em 0x44A0FB:
+        // byte [jogador + 0x2AC + id] = 1. Le flag, flag2 e flag3. Os demais nomes ainda NAO estao mapeados.
+        static const struct { const char* name; int id; } known[] = { {"nostandguard", 0}, {"nocrouchguard", 1}, {"noairguard", 2}, {"nowalk", 6} };
+        for (size_t i = 0; i < c.params.size(); ++i) {
+            const std::string& k = c.params[i].key;
+            if (!(ini_iequals(k, "flag") || ini_iequals(k, "flag2") || ini_iequals(k, "flag3"))) continue;
+            std::string v = lower(c.params[i].value);
+            size_t b = v.find_first_not_of(" \t"), e = v.find_last_not_of(" \t");
+            v = b == std::string::npos ? std::string() : v.substr(b, e - b + 1);
+            bool found = false;
+            for (size_t j = 0; j < sizeof known / sizeof known[0]; ++j)
+                if (v == known[j].name) { p.assertFlags[known[j].id] = 1; found = true; }
+            if (!found && !v.empty()) p.skipped["assertspecial:" + v]++;
+        }
+        return false;
+    }
     if (t == "defencemulset" || t == "forcefeedback" || t == "null") return false;   // sem efeito no motor (por enquanto)
     p.skipped["controller:" + c.type]++;
     return false;
@@ -427,13 +445,18 @@ bool Engine::exec(Player& p, const CnsController& c) {
 
 // Porte de Player_UpdateInput (0x00434DB0) (mugen.exe 1.1b1), parte que escolhe a "intencao" de movimento.
 // Entradas lidas dos comandos padrao holdfwd/holdback/holdup/holddown (o exe le as teclas direto).
-// NAO portado ainda: guarda automatica (intencao 0x28 -> estado 120), pulo no ar (intencao 10 -> estado 45),
-// a limpeza do campo +0x248, o flag +0x2b2 (bloqueio de andar) e a trava de rodada (+0x12754 == 3).
+// Portado e conferido no assembly: guarda automatica (intencao 0x28 -> estado 120) com os flags nostandguard/nocrouchguard/noairguard
+// (+0x2AC/+0x2AD/+0x2AE, 0x435241-0x43526C), pulo no ar (intencao 10 -> estado 45, 0x4351CA e 0x435370-0x4353C4), nowalk (+0x2B2, 0x435404)
+// e a limpeza da velocidade X (+0x248, 0x43544D e 0x435548).
+// NAO portado: a trava de rodada (global +0x12754 == 3 no pulo), as condicoes globais (+0x11F78 na guarda), guarda contra projeteis,
+// a fila de teclas (inputEvent e preenchido pelo chamador) e o limpar de comandos por +0x310.
 void Engine::default_movement(Player& p) {
     bool fwd  = p.commands.count("holdfwd")  != 0;
     bool back = p.commands.count("holdback") != 0;
     bool up   = p.commands.count("holdup")   != 0;
     bool down = p.commands.count("holddown") != 0;
+    // 0x434DC9-0x434DF3: o exe tira UM valor da fila de teclas por tick (vazia = 0); so o valor 1 interessa ao pulo no ar
+    int ev = p.inputEvent; p.inputEvent = 0;
     int intent = -1;
     bool keepCrouch = false;
     if (p.stateType == 'S') {
@@ -442,13 +465,16 @@ void Engine::default_movement(Player& p) {
         if (up)   intent = 7;            // pular (sobrepoe agachar)
     }
     if (p.stateType == 'C' && down) keepCrouch = true;
+    if (p.stateType == 'A' && ev == 1) intent = 10;   // 0x4351CA: statetype A e evento de teclas == 1 -> intencao 10 (pulo no ar)
     if (fwd && back) intent = -1;        // as duas direcoes juntas cancelam qualquer intencao
     // Guarda automatica (Player_UpdateInput (0x00434DB0) + Player_InGuardDist (0x004347A0)): segurando "trás", sem "cima", com controle parado ou ja
     // guardando (151/153/155), e um oponente atacando dentro da guard.dist -> intencao 0x28 (sobrepoe as demais).
-    // NAO portado: as flags por statetype do personagem (+0x2AC/+0x2AD/+0x2AE) e projeteis.
+    // NAO portado: projeteis.
     bool guardIntent = false;
     p.guarding = false;                  // exe: *(player+0xEE8) = 0 antes do teste de guarda
-    if (back && !up && p.enemy &&
+    // 0x435241-0x43526C: o flag do statetype atual (nostandguard S, nocrouchguard C, noairguard A) pula a checagem de guarda inteira
+    bool noGuardFlag = (p.stateType == 'S' && p.assertFlags[0]) || (p.stateType == 'C' && p.assertFlags[1]) || (p.stateType == 'A' && p.assertFlags[2]);
+    if (back && !up && !noGuardFlag && p.enemy &&
         ((p.moveType == 'I' && (p.ctrl || p.stateNo == 52)) || p.stateNo == 151 || p.stateNo == 153 || p.stateNo == 155)) {
         const Player* o = p.enemy;
         if (o->moveType == 'A') {
@@ -473,13 +499,24 @@ void Engine::default_movement(Player& p) {
         return;      // o exe pula a regra "estado 20 -> 0" e a de levantar
     }
     if (intent == 11) {
-        if (p.ctrl && p.stateNo != 10 && p.stateNo != 11) enter_state(p, 10);
+        if (p.ctrl) {
+            if (p.stateNo != 100) p.velX = 0;                          // 0x43543A-0x43544D: fldz/fstp [+0x248] (vel.x = 0) salvo no estado 100
+            if (p.stateNo != 10 && p.stateNo != 11) enter_state(p, 10);
+        }
         handled = true;
     } else if (intent == 1) {
-        if (p.ctrl && p.stateNo != 20) enter_state(p, 20);
+        if (p.ctrl && !p.assertFlags[6] && p.stateNo != 20) enter_state(p, 20);   // 0x435404: nowalk (+0x2B2) impede entrar no 20
         handled = true;
     } else if (intent == 7) {
         if (p.ctrl) enter_state(p, 40);
+        handled = true;
+    } else if (intent == 10) {
+        // 0x435370-0x4353C4: exige ctrl e +0x278 > 0; compara airjump.height (int em +0x110) com -posY (double em +0x200):
+        // entra no 45 so se height < -posY (fcompp + test ah,5). Depois +0x278--.
+        if (p.ctrl && p.airJumpsLeft > 0) {
+            float h = 0; ch_.constant("movement.airjump.height", h);
+            if ((float)(int)h < -p.posY) { enter_state(p, 45); --p.airJumpsLeft; }
+        }
         handled = true;
     }
     if (handled) return;
@@ -513,13 +550,20 @@ void Engine::tick(Player& p) {
     // Pausa de hit (hitpause / shake): o exe decrementa a pausa no lugar de mover (Player_Update (0x0043C480)).
     // Durante a pausa so rodam controllers com ignorehitpause (docs); Time e animacao ficam congelados.
     bool paused = p.pauseTime > 0;
-    if (!paused) default_movement(p);
+    if (!paused) default_movement(p); else p.inputEvent = 0;
+    // 0x41389E (FUN_00413170, logo depois do 434db0 de todos os jogadores e antes de Player_Update): zera os flags do AssertSpecial
+    for (int i = 0; i < 8; ++i) p.assertFlags[i] = 0;
     // Dano pendente (Player_Update 0x43C7AB, antes do teste de pausa em 0x43C988): vida = vida - dano, entre 0 e lifeMax;
     // zera o pendente. Roda mesmo durante o hitpause. NAO portado: o desvio com o estado global 3 e a flag de depuracao.
     if (p.gethitDamage != 0) {
         int nl = p.life - p.gethitDamage;
         p.life = nl < 0 ? 0 : nl > p.lifeMax ? p.lifeMax : nl;
         p.gethitDamage = 0;
+    }
+    // Player_Update 0x43C96A: no tick 0 do estado 40 (pulo) o contador de pulos no ar recebe Const(movement.airjump.num) (+0x10c -> +0x278)
+    if (p.stateNo == 40 && p.time == 0) {
+        float n = 0;
+        p.airJumpsLeft = ch_.constant("movement.airjump.num", n) ? (int)n : 0;
     }
     if (!paused) {
         physics(p);

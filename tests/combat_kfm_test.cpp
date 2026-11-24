@@ -125,6 +125,44 @@ int main(int argc, char** argv) {
         CHECK(!hitFlag, "guardado nao e MoveHit");
         CHECK(flagsOk, "p1 deveria ter MoveContact junto com MoveGuarded");
     }
+    // G2) flags nostandguard/nocrouchguard/noairguard (+0x2AC/+0x2AD/+0x2AE, FUN_00434db0 0x435241-0x43526C): com o flag do statetype
+    //     atual o exe pula a checagem de guarda inteira (nao entra no 120 e o flag de guarda fica 0)
+    {
+        Duel d(ch, 50);
+        d.p2.commands.insert("holdback");
+        d.p1.commands.insert("x");
+        bool entered120 = false;
+        for (int t = 0; t < 4; ++t) {
+            d.p2.assertFlags[0] = 1;          // nostandguard, marcado a cada tick (como faria o AssertSpecial)
+            d.step(); d.p1.commands.clear();
+            if (d.p2.stateNo >= 120 && d.p2.stateNo <= 132) entered120 = true;
+        }
+        CHECK(!entered120 && !d.p2.guarding, "com nostandguard p2 nao entra na guarda (estado=%d guarding=%d)", d.p2.stateNo, (int)d.p2.guarding);
+        // o flag de OUTRO statetype nao impede: noairguard em pe continua guardando
+        Duel e(ch, 50);
+        e.p2.commands.insert("holdback");
+        e.p1.commands.insert("x");
+        bool ok120 = false;
+        for (int t = 0; t < 3; ++t) {
+            e.p2.assertFlags[2] = 1;
+            e.step(); e.p1.commands.clear();
+            if (e.p2.stateNo >= 120 && e.p2.stateNo <= 132) ok120 = true;
+        }
+        CHECK(ok120, "noairguard nao afeta a guarda em pe (estado=%d)", e.p2.stateNo);
+    }
+    // G3) golpe recebido ou guardado zera o contador de pulos no ar (+0x278; HitDef_Apply 0x43F6D4 e Player_Guard 0x43FAE3)
+    {
+        Duel d(ch, 50);
+        d.p2.airJumpsLeft = 1;
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 5; ++t) { d.step(); d.p1.commands.clear(); }
+        CHECK(d.p2.stateNo >= 5000 && d.p2.airJumpsLeft == 0, "apanhar zera os pulos no ar (estado=%d, contador=%d)", d.p2.stateNo, d.p2.airJumpsLeft);
+        Duel g(ch, 50);
+        g.p2.airJumpsLeft = 1;
+        g.p2.commands.insert("holdback"); g.p1.commands.insert("x");
+        for (int t = 0; t < 6; ++t) { g.step(); g.p1.commands.clear(); }
+        CHECK(g.p1.moveGuarded && g.p2.airJumpsLeft == 0, "guardar zera os pulos no ar (guardado=%d, contador=%d)", (int)g.p1.moveGuarded, g.p2.airJumpsLeft);
+    }
     // H) sem segurar "tras" o mesmo soco acerta; e a 200 px (fora da guard.dist de 160) nao entra em guarda
     {
         Duel d(ch, 50);
