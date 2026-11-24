@@ -16,6 +16,7 @@ bool boxes_overlap(const WorldBox& a, const WorldBox& b) {
     return a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
 }
 
+bool apply_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk);
 static int state_code(char t) { return t == 'S' ? 1 : t == 'C' ? 2 : t == 'A' ? 3 : t == 'L' ? 4 : 0; }
 
 // 0x00441200 (assembly confirmado):
@@ -113,8 +114,8 @@ bool hit_apply_prepare(Player& tgt, const Player& att, const HitDef& hd, int& st
 }
 } // namespace
 
-bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk) {
-    // --- Player_CanHit (0x0043E280): HitDef ativo, alvo vivo, caixas se sobrepoem e o hitflag combina ---
+bool can_hit(const Player& atk, const Player& def, const Engine& engDef, const Engine& engAtk) {
+    // --- Player_CanHit (0x0043E280): HitDef ativo, alvo vivo, caixas se sobrepoem, juggle e o hitflag combina ---
     if (!atk.hitdef.active || atk.pauseTime > 0 || def.life <= 0) return false;
     const HitDef& h = atk.hitdef;
     const AirFrame* fa = engAtk.current_frame(atk);
@@ -125,17 +126,38 @@ bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk)
         for (size_t j = 0; j < fd->clsn2.size() && !overlap; ++j)
             overlap = boxes_overlap(world_box(atk, fa->clsn1[i]), world_box(def, fd->clsn2[j]));
     if (!overlap) return false;
+    // 0x43E415-0x43E43A: sem nojugglecheck (+0x2B1), se o atacante ja tem registro do alvo e o custo (+0x1264) nao e -1,
+    // recusa quando pontos - custo < 0 (js em 0x43E432)
+    if (!atk.assertFlags[5] && atk.juggleRec && atk.juggleCost != -1 && atk.juggleLeft - atk.juggleCost < 0) return false;
     if (!hitflag_matches(def, h.hitflag)) return false;   // 0x43E448: call 0x441200 com [att+0x12A8]
+    return true;
+}
 
+bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk) {
+    if (!can_hit(atk, def, engDef, engAtk)) return false;
+    return apply_hit(atk, def, engDef, engAtk);
+}
+
+bool apply_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk) {
     // --- Player_Hit (0x0043E480) ---
-    HitDef hd = h;
+    HitDef hd = atk.hitdef;
     bool guarded = false;
     // guardado se: flag "guardando" (+0xEE8) E guardflag combina (0x441200) E o dano de guarda nao mata
-    if (def.guarding && hitflag_matches(def, hd.guardflag)) {
+    if (def.guarding && !atk.assertFlags[7] && hitflag_matches(def, hd.guardflag)) {   // 0x43E50D: byte +0x2B3 do atacante = unguardable
         int gd = hit_damage(def, hd.guardDamage, hd.guardKill);
         if (def.life - def.gethitDamage - gd > 0) guarded = true;   // sem chip-kill (flag global nao portada)
     }
     bool hitOnceOff = hd.hitOnce;
+
+    // Juggle (Player_Hit): 0x43E619-0x43E6A2 cria o registro do alvo no atacante no primeiro golpe (guardado ou nao); 0x43E931-0x43E95D
+    // desconta o custo (+0x1424) so quando o golpe NAO foi guardado e o alvo cai (hitdef+0x78 bit 0) ou ja caia (+0x1148).
+    // Nao portado: o termo [hitdef+0x148] != 0 com o alvo no ar (significado nao lido).
+    atk.juggleNow = atk.assertFlags[5] ? 0 : atk.juggleCost;              // 0x43E43A / 0x43DA27
+    if (!atk.juggleRec) {
+        atk.juggleRec = true;
+        float k; atk.juggleLeft = engAtk.character().constant("data.airjuggle", k) ? (int)k : 0;   // NAO PROVADO: [atacante+0x64]
+    }
+    if (!guarded && (def.gethit.fall != 0 || (hd.hitflag & 1) != 0)) atk.juggleLeft -= atk.juggleNow;
 
     if (guarded) {
         // Player_Guard (0x0043F990): estados 150 / 152 / 154
@@ -185,11 +207,35 @@ bool resolve_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk)
     return true;
 }
 
+// 0x43DB56-0x43DB77 (e o espelho 0x43DBA6-0x43DBC7): A so acerta B se tem prioridade maior, ou se iguais e (tipoA == Hit e tipoB != Dodge).
+static bool priority_wins(const HitDef& a, const HitDef& b) {
+    if (a.priority > b.priority) return true;
+    if (a.priority != b.priority) return false;
+    return a.priorityType == 0 && b.priorityType != 2;
+}
+
 void resolve_hits(Player& a, Engine& ea, Player& b, Engine& eb) {
-    // Simplificacao: os dois golpes sao calculados contra o estado do inicio da rodada (sem prioridade).
+    // Os dois sentidos sao testados contra o estado do inicio da rodada (como a tabela montada em 0x43DB34 antes de aplicar os golpes).
+    // Prioridade: se so um pode acertar o outro, acerta; se os dois podem, vale a regra acima (0x43DB56-0x43DBDE).
+    bool ab = can_hit(a, b, eb, ea);
+    bool ba = can_hit(b, a, ea, eb);
+    bool abOk = ab && (!ba || priority_wins(a.hitdef, b.hitdef));
+    bool baOk = ba && (!ab || priority_wins(b.hitdef, a.hitdef));
+    // Simplificacao: os dois golpes sao calculados contra o estado do inicio da rodada.
     Player a0 = a, b0 = b;
-    bool ab = resolve_hit(a0, b, eb, ea);
-    bool ba = resolve_hit(b0, a, ea, eb);
-    if (ab) { a.moveContact = a0.moveContact; a.moveHit = a0.moveHit; a.moveGuarded = a0.moveGuarded; a.hitdef = a0.hitdef; a.pauseTime = a0.pauseTime; }
-    if (ba) { b.moveContact = b0.moveContact; b.moveHit = b0.moveHit; b.moveGuarded = b0.moveGuarded; b.hitdef = b0.hitdef; b.pauseTime = b0.pauseTime; }
+    bool abDone = abOk && apply_hit(a0, b, eb, ea);
+    bool baDone = baOk && apply_hit(b0, a, ea, eb);
+    if (abDone) { a.moveContact = a0.moveContact; a.moveHit = a0.moveHit; a.moveGuarded = a0.moveGuarded; a.hitdef = a0.hitdef; a.pauseTime = a0.pauseTime; a.juggleNow = a0.juggleNow; a.juggleRec = a0.juggleRec; a.juggleLeft = a0.juggleLeft; }
+    if (baDone) { b.moveContact = b0.moveContact; b.moveHit = b0.moveHit; b.moveGuarded = b0.moveGuarded; b.hitdef = b0.hitdef; b.pauseTime = b0.pauseTime; b.juggleNow = b0.juggleNow; b.juggleRec = b0.juggleRec; b.juggleLeft = b0.juggleLeft; }
+    // FUN_00417400 (chamada em 0x413E15, depois do pipeline de hits): remove o registro quando o alvo sai do hitstun
+    end_frame_juggle(a, b);
+    end_frame_juggle(b, a);
+}
+
+// 0x417430-0x41749D (por alvo): alvo em movetype H mantem o registro, salvo o estado 5150 (0x141E) com Time > 0; sem nenhum alvo em H o
+// registro e removido. Nao portado: a condicao do hitdef ativo com +0x12EC != 0 (0x417450-0x417460), significado nao lido.
+void end_frame_juggle(Player& atk, const Player& def) {
+    if (!atk.juggleRec) return;
+    if (def.moveType == 'H' && (def.stateNo != 5150 || def.time == 0)) return;
+    atk.juggleRec = false;
 }

@@ -163,6 +163,87 @@ int main(int argc, char** argv) {
         for (int t = 0; t < 6; ++t) { g.step(); g.p1.commands.clear(); }
         CHECK(g.p1.moveGuarded && g.p2.airJumpsLeft == 0, "guardar zera os pulos no ar (guardado=%d, contador=%d)", (int)g.p1.moveGuarded, g.p2.airJumpsLeft);
     }
+    // P) prioridade entre golpes simultaneos (FUN_0043D950, 0x43DB34-0x43DBDE): quando os dois podem se acertar, A acerta B se
+    //    prioA > prioB, ou se iguais e (tipoA == Hit e tipoB != Dodge). Prioridade menor nao acerta. O padrao do exe e 4, Hit.
+    //    Tipo do HitDef lido pela primeira letra (0x44F255-0x44F28C): h = 0 Hit, m = 1 Miss, d = 2 Dodge.
+    {
+        struct Case { int pa, ta, pb, tb; bool aHits, bHits; const char* nome; };
+        const Case cases[] = {
+            {4, 0, 4, 0, true,  true,  "igual: os dois acertam (trade)"},
+            {5, 0, 4, 0, true,  false, "A com prioridade maior acerta sozinho"},
+            {4, 0, 5, 0, false, true,  "B com prioridade maior acerta sozinho"},
+            {4, 2, 4, 0, false, false, "igual com Dodge: nenhum acerta"},
+            {4, 1, 4, 0, false, true,  "igual: Hit vence Miss"},
+            {4, 0, 4, 1, true,  false, "igual: Hit vence Miss (lado oposto)"},
+            {3, 2, 4, 0, false, true,  "Dodge com prioridade menor perde"},
+        };
+        for (size_t i = 0; i < sizeof cases / sizeof cases[0]; ++i) {
+            const Case& c = cases[i];
+            Duel d(ch, 40);
+            d.p1.commands.insert("x"); d.p2.commands.insert("x");
+            for (int t = 0; t < 3; ++t) { d.step(); d.p1.commands.clear(); d.p2.commands.clear(); }
+            d.e1.tick(d.p1); d.e2.tick(d.p2);                  // tick 3: os dois HitDefs ficam ativos
+            CHECK(d.p1.hitdef.active && d.p2.hitdef.active, "[%s] os dois golpes deveriam estar ativos", c.nome);
+            d.p1.hitdef.priority = c.pa; d.p1.hitdef.priorityType = c.ta;
+            d.p2.hitdef.priority = c.pb; d.p2.hitdef.priorityType = c.tb;
+            resolve_hits(d.p1, d.e1, d.p2, d.e2);
+            bool bHit = d.p2.stateNo >= 5000, aHit = d.p1.stateNo >= 5000;
+            CHECK(bHit == c.aHits && aHit == c.bHits, "[%s] A acerta B=%d (esperado %d), B acerta A=%d (esperado %d)", c.nome, (int)bHit, (int)c.aHits, (int)aHit, (int)c.bHits);
+        }
+    }
+    // U) unguardable (AssertSpecial id 7 = byte +0x2B3 do atacante, 0x43E50D): o golpe nao e guardado mesmo com o defensor guardando
+    {
+        Duel d(ch, 50);
+        d.p2.commands.insert("holdback"); d.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { d.step(); d.p1.commands.clear(); }
+        d.e1.tick(d.p1); d.e2.tick(d.p2);
+        CHECK(d.p2.guarding, "p2 deveria estar guardando antes do golpe");
+        d.p1.assertFlags[7] = 1;                              // marcado pelo AssertSpecial durante o Player_Update
+        resolve_hits(d.p1, d.e1, d.p2, d.e2);
+        CHECK(d.p2.stateNo == 5000 && !d.p1.moveGuarded, "unguardable: o golpe acerta (estado=%d guardado=%d)", d.p2.stateNo, (int)d.p1.moveGuarded);
+    }
+    // J) juggle. Verificado no assembly: Player_CanHit 0x43E415-0x43E43A (sem nojugglecheck, com registro do alvo e custo != -1: se
+    //    pontos - custo < 0 nao acerta; o custo fica em +0x1424), Player_Hit 0x43E619-0x43E6A2 (cria o registro no primeiro golpe) e
+    //    0x43E931-0x43E95D (so desconta quando o golpe nao e guardado e o alvo cai ou ja caia), 0x417400 (remove o registro quando
+    //    nenhum alvo esta em movetype H, exceto 5150 com Time > 0), chamado depois do pipeline de hits (0x413E15).
+    //    NAO PROVADO: pontos iniciais = Const(data.airjuggle) (+0x64) e custo = juggle do Statedef (+0x1264 via 0x45C07D).
+    {
+        Duel d(ch, 50);
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { d.step(); d.p1.commands.clear(); }
+        d.e1.tick(d.p1); d.e2.tick(d.p2);
+        CHECK(d.p1.hitdef.active, "hitdef ativo");
+        CHECK(d.p1.juggleCost == 1, "custo de juggle = Statedef juggle do estado 200 (1), veio %d", d.p1.juggleCost);
+        CHECK(!d.p1.juggleRec, "ainda sem registro do alvo");
+        // can_hit com registro: pontos - custo < 0 recusa; igual a 0 acerta; nojugglecheck ignora; sem registro acerta
+        Player a = d.p1, b = d.p2;
+        a.juggleRec = true; a.juggleLeft = 0;
+        CHECK(!can_hit(a, b, d.e2, d.e1), "sem pontos de juggle (0 - 1 < 0) nao acerta");
+        a.juggleLeft = 1;
+        CHECK(can_hit(a, b, d.e2, d.e1), "com 1 ponto e custo 1 acerta (1 - 1 = 0 nao e negativo)");
+        a.juggleLeft = 0; a.assertFlags[5] = 1;
+        CHECK(can_hit(a, b, d.e2, d.e1), "nojugglecheck ignora a checagem");
+        a.assertFlags[5] = 0; a.juggleRec = false;
+        CHECK(can_hit(a, b, d.e2, d.e1), "sem registro o primeiro golpe acerta");
+        // golpe normal (sem queda): cria o registro com Const(data.airjuggle) = 15 e NAO desconta
+        resolve_hits(d.p1, d.e1, d.p2, d.e2);
+        CHECK(d.p2.stateNo == 5000 && d.p1.juggleRec && d.p1.juggleLeft == 15, "registro criado com 15 pontos, sem desconto (estado=%d rec=%d pts=%d)", d.p2.stateNo, (int)d.p1.juggleRec, d.p1.juggleLeft);
+        // enquanto p2 esta em hitstun (movetype H) o registro fica
+        for (int t = 0; t < 4; ++t) d.step();
+        CHECK(d.p2.moveType == 'H' && d.p1.juggleRec, "em hitstun o registro permanece (movetype=%c rec=%d)", d.p2.moveType, (int)d.p1.juggleRec);
+        // quando p2 volta ao movetype I o registro some (0x417400)
+        for (int t = 0; t < 60 && d.p2.moveType == 'H'; ++t) d.step();
+        d.step();
+        CHECK(d.p2.moveType != 'H' && !d.p1.juggleRec, "sem alvo em hitstun o registro e removido (movetype=%c rec=%d)", d.p2.moveType, (int)d.p1.juggleRec);
+        // golpe que derruba (fall): desconta o custo do registro
+        Duel f(ch, 50);
+        f.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { f.step(); f.p1.commands.clear(); }
+        f.e1.tick(f.p1); f.e2.tick(f.p2);
+        f.p1.hitdef.hitflag |= 1;                              // fall: [hitdef+0x78] bit 0
+        resolve_hits(f.p1, f.e1, f.p2, f.e2);
+        CHECK(f.p1.juggleRec && f.p1.juggleLeft == 15 - 1, "golpe que derruba desconta o custo (pts=%d, esperado 14)", f.p1.juggleLeft);
+    }
     // H) sem segurar "tras" o mesmo soco acerta; e a 200 px (fora da guard.dist de 160) nao entra em guarda
     {
         Duel d(ch, 50);
