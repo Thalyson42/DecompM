@@ -75,7 +75,7 @@ O golpe só é guardado se `[atacante+0x2B3] == 0`. Portado em `apply_hit`.
 - **Remoção** (`FUN_00417400`, chamada em 0x413E15, depois do pipeline de hits 0x413CCC): por alvo, se o alvo está em movetype H e (estado != 5150 ou
   Time == 0) o registro fica; sem nenhum alvo em H o registro é removido (e `+0x151C = 0`). Portado em `end_frame_juggle`, chamada ao fim de `resolve_hits`.
 - **NÃO PROVADO (o porte assume, e os testes dependem disso):**
-  1. `[atacante+0x64]` = `Const(data.airjuggle)` (15 no KFM). Evidência: é a única constante do personagem lida ali; o carregador que grava o campo não foi achado.
+  1. **CONFERIDO (issue #3):** `[atacante+0x64]` = `Const(data.airjuggle)` (15 no KFM). O carregador grava a chave `airjuggle` em `CharData+0x2D0` (0x437620-0x43762E; chave `0x4F6E6C`; a string `data.airjuggle` é 0x4F6890, lida também em 0x437412 para o Lua). Em 0x43A4F9-0x43A507 o jogador recebe uma cópia de `CharData+0x2BC` (0x58 dwords) em `jogador+0x50`, então `jogador+0x64` = `+0x14` do bloco = `airjuggle`. `Player_Hit` lê `[atacante+0x64]` em 0x43E636. Chave ausente em `[Data]`: o exe aborta a carga (0x437638 → 0x439903); o porte cai em 0. Teste: `tests/combat_kfm_test.cpp`, bloco J2 (airjuggle trocado por 7, golpe normal e guardado).
   2. O custo `+0x1264` vem do `juggle` do Statedef: gravado em 0x45C07D quando o valor != -1 (omitido mantém o anterior). Não achei onde ele é zerado; o porte só
      lê o `juggle` do Statedef ao entrar no estado e o mantém se omitido.
   3. O `air.juggle` do HitDef: o parser grava em `hitdef+0x34` (0x450485), mas a execução do controller HitDef restaura o valor anterior logo depois
