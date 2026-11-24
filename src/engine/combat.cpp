@@ -1,3 +1,4 @@
+
 #include "engine/combat.h"
 #include <algorithm>
 #include <cmath>
@@ -155,7 +156,7 @@ bool apply_hit(Player& atk, Player& def, Engine& engDef, const Engine& engAtk) {
     atk.juggleNow = atk.assertFlags[5] ? 0 : atk.juggleCost;              // 0x43E43A / 0x43DA27
     if (!atk.juggleRec) {
         atk.juggleRec = true;
-        float k; atk.juggleLeft = engAtk.character().constant("data.airjuggle", k) ? (int)k : 0;   // NAO PROVADO: [atacante+0x64]
+        float k; atk.juggleLeft = engAtk.character().constant("data.airjuggle", k) ? (int)k : 0;   // CONFERIDO (#3): [atacante+0x64] = jogador+0x50 + consts.airjuggle (+0x14); gravado em CharData+0x2D0 (0x437620), copiado em 0x43A4F9
     }
     if (!guarded && (def.gethit.fall != 0 || (hd.hitflag & 1) != 0)) atk.juggleLeft -= atk.juggleNow;
 
