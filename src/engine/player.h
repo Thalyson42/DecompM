@@ -30,6 +30,7 @@ struct HitDef {
     float yaccel;
     int   fall;
     int   priority;
+    int   priorityType;              // 0 Hit, 1 Miss, 2 Dodge (primeira letra, 0x44F255-0x44F28C); exe: hitdef+0x80 (+0x12B0)
     bool  hitOnce;
     // guarda (docs); kUnset = omitido -> o padrao e resolvido na hora do golpe
     int   guardDist;                 // x-distancia de guarda; padrao = Const(size.attack.dist) (exe: campo 0x4EB)
@@ -38,7 +39,7 @@ struct HitDef {
     int   guardHitTime, guardSlideTime, guardCtrlTime;
     HitDef() : active(false), attrTypes(0), hitflag(0x3e), guardflag(0), kill(1), guardKill(1), damage(0), guardDamage(0), pause1(0), pause2(0),
         groundHitTime(0), groundSlideTime(0), airHitTime(20), groundVelX(0), groundVelY(0), airVelX(0), airVelY(0), groundVelYSet(false), airVelYSet(false),
-        groundType(1), airType(1), animType(0), yaccel(0.35f), fall(0), priority(4), hitOnce(true),
+        groundType(1), airType(1), animType(0), yaccel(0.35f), fall(0), priority(4), priorityType(0), hitOnce(true),
         guardDist(-1), guardPause1(-9999), guardPause2(-9999), guardVelX(-9999.0f),
         guardHitTime(-9999), guardSlideTime(-9999), guardCtrlTime(-9999) {}
 };
@@ -72,6 +73,10 @@ struct Player {
     int   airJumpsLeft;               // exe: +0x278; pulos no ar restantes. Recebe Const(movement.airjump.num) no tick 0 do estado 40; zera ao apanhar/guardar
     unsigned char assertFlags[8];     // exe: bytes +0x2AC+id (flags do AssertSpecial): 0 nostandguard, 1 nocrouchguard, 2 noairguard, 6 nowalk.
                                       // Limpos pelo exe DEPOIS de FUN_00434db0 e antes de Player_Update (0x41389E): o flag marcado no tick N vale no tick N+1.
+    int   juggleCost;                 // exe: +0x1264 (hitdef+0x34): custo de juggle = Statedef juggle (gravado em 0x45C07D; omitido/-1 mantem o anterior)
+    int   juggleNow;                  // exe: +0x1424: custo deste golpe, calculado em Player_CanHit (0x43E43A) e zerado a cada frame (0x43DA27)
+    bool  juggleRec;                  // existe registro do alvo na lista de alvos do atacante (+0x2C8, chave = alvo; criado em 0x43E619-0x43E6A2)
+    int   juggleLeft;                 // pontos de juggle restantes no registro (registro+4). Inicial = Const(data.airjuggle) do atacante (NAO PROVADO: +0x64)
     int   inputEvent;                 // valor tirado da fila de teclas (anel de 30 em +0x314) neste tick; 0 = fila vazia. O pulo no ar exige exatamente 1.
                                       // Quem produz os valores (0x4134C9, 0x433B90...) ainda NAO esta portado: o chamador preenche. Consumido por default_movement.
     float defenceMul;                 // exe: +0x1E4 = 100 / Const(data.defence)

@@ -183,6 +183,33 @@ int main(int argc, char** argv) {
         u.commands.insert("holdfwd");
         for (int i = 0; i < 5; ++i) e2.tick(u);
         CHECK(u.stateNo == 0, "com AssertSpecial nowalk todo tick, frente nao anda (estado=%d)", u.stateNo);
+        // tabela completa do parser 0x4592A4: noautoturn 3, noshadow 4, nojugglecheck 5, unguardable 7 (+0x2AC+id)
+        Character c3 = ch;
+        CnsController ac3; ac3.stateNumber = -1; ac3.type = "AssertSpecial"; ac3.line = 0;
+        ac3.triggers.push_back(std::vector<std::string>(1, "1"));
+        const char* keys[] = {"flag", "flag2", "flag3"}; const char* vals[] = {"unguardable", "NoJuggleCheck", "noautoturn"};
+        for (int k = 0; k < 3; ++k) { CnsParam q; q.key = keys[k]; q.value = vals[k]; q.line = 0; ac3.params.push_back(q); }
+        c3.states[-1].controllers.push_back(ac3);
+        Engine e3(c3);
+        Player y; e3.enter_state(y, 0); y.ctrl = true; y.facing = 1;
+        e3.tick(y);
+        CHECK(y.assertFlags[7] == 1 && y.assertFlags[5] == 1 && y.assertFlags[3] == 1, "AssertSpecial: unguardable=%d nojugglecheck=%d noautoturn=%d", y.assertFlags[7], y.assertFlags[5], y.assertFlags[3]);
+        // HitDef: priority = N, Tipo (0x44F1DA-0x44F28C): padrao 4, Hit; o tipo vem da primeira letra (h/m/d)
+        struct Pc { const char* texto; int prio, tipo; };
+        const Pc pcs[] = { {"", 4, 0}, {"3, Dodge", 3, 2}, {"5, Miss", 5, 1}, {"2, Hit", 2, 0}, {"6, dodge", 6, 2}, {"7", 7, 0} };
+        for (size_t i = 0; i < sizeof pcs / sizeof pcs[0]; ++i) {
+            Character c4 = ch;
+            CnsController hc; hc.stateNumber = -1; hc.type = "HitDef"; hc.line = 0;
+            hc.triggers.push_back(std::vector<std::string>(1, "1"));
+            CnsParam a1; a1.key = "attr"; a1.value = "S, NA"; a1.line = 0; hc.params.push_back(a1);
+            if (pcs[i].texto[0]) { CnsParam a2; a2.key = "priority"; a2.value = pcs[i].texto; a2.line = 0; hc.params.push_back(a2); }
+            c4.states[-1].controllers.push_back(hc);
+            Engine e4(c4);
+            Player hp; e4.enter_state(hp, 0); hp.ctrl = true; hp.facing = 1;
+            e4.tick(hp);
+            CHECK(hp.hitdef.active && hp.hitdef.priority == pcs[i].prio && hp.hitdef.priorityType == pcs[i].tipo,
+                  "priority = '%s': esperado %d/%d, veio %d/%d", pcs[i].texto, pcs[i].prio, pcs[i].tipo, hp.hitdef.priority, hp.hitdef.priorityType);
+        }
         Player z; eng.enter_state(z, 0); z.ctrl = true; z.facing = 1; z.commands.insert("holdfwd");
         for (int i = 0; i < 5; ++i) eng.tick(z);
         CHECK(z.stateNo == 20, "sem AssertSpecial o mesmo KFM anda (estado=%d)", z.stateNo);

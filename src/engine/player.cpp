@@ -9,7 +9,7 @@ static std::string lower(std::string s) { for (size_t i = 0; i < s.size(); ++i) 
 Player::Player() : stateNo(0), prevStateNo(0), time(0), ctrl(false), anim(0), animElapsed(0),
     posX(0), posY(0), velX(0), velY(0), facing(1), life(1000), power(0),
     pauseTime(0), hitTime(0), moveContact(false), moveHit(false), moveGuarded(false), guarding(false),
-    gethitDamage(0), airJumpsLeft(0), inputEvent(0), defenceMul(1.0f), lifeMax(1000), alive(true), enemy(0), defaultGuardDist(-1), life0(1000),
+    gethitDamage(0), airJumpsLeft(0), juggleCost(0), juggleNow(0), juggleRec(false), juggleLeft(0), inputEvent(0), defenceMul(1.0f), lifeMax(1000), alive(true), enemy(0), defaultGuardDist(-1), life0(1000),
     stateType('S'), moveType('I'), physics('N') {
     for (int i = 0; i < 60; ++i) var[i] = 0;
     for (int i = 0; i < 40; ++i) fvar[i] = 0;
@@ -297,6 +297,7 @@ bool Engine::enter_state(Player& p, int n) {
     int iv; std::vector<ExprValue> vv;
     if (param_int(p, tmp, "anim", iv)) set_anim(p, iv, 1);
     if (param_values(p, tmp, "velset", vv)) { if (vv.size() > 0) p.velX = to_f(vv[0]) * (float)p.facing; if (vv.size() > 1) p.velY = to_f(vv[1]); }
+    if (param_int(p, tmp, "juggle", iv) && iv != -1) p.juggleCost = iv;   // 0x45C07D: -1 (omitido) nao grava; mantem o valor anterior (NAO PROVADO que nada o zera em outro lugar)
     if (param_int(p, tmp, "ctrl", iv)) p.ctrl = iv != 0;
     if (param_int(p, tmp, "poweradd", iv)) p.power += iv;
     return true;
@@ -356,7 +357,15 @@ void Engine::exec_hitdef(Player& p, const CnsController& c) {
     h.animType = at == "medium" ? 1 : at == "hard" ? 2 : at == "back" ? 3 : at == "up" ? 4 : at == "diagup" ? 5 : 0;
     if (param_float(p, c, "yaccel", fv)) h.yaccel = fv;
     if (param_int(p, c, "fall", iv)) { h.fall = iv; if (iv != 0) h.hitflag |= 1; }   // bit 0 de hitflag = "sempre cai" (consumo: 0x43EE01)
-    if (param_values(p, c, "priority", v) && !v.empty()) h.priority = to_i(v[0]);
+    if (param_values(p, c, "priority", v) && !v.empty()) h.priority = to_i(v[0]);   // padrao 4 (0x44F1DA)
+    {   // tipo: primeira letra minuscula, h = Hit (0, padrao), m = Miss (1), d = Dodge (2) (0x44F255-0x44F28C)
+        std::string pr = raw_param(c, "priority");
+        size_t cm = pr.find(',');
+        if (cm != std::string::npos) {
+            std::string tp = lower(first_token(pr.substr(cm + 1)));
+            h.priorityType = tp.empty() ? 0 : tp[0] == 'm' ? 1 : tp[0] == 'd' ? 2 : 0;
+        }
+    }
     if (param_int(p, c, "hitonce", iv)) h.hitOnce = iv != 0;
     { std::string gf = raw_param(c, "guardflag"); h.guardflag = gf.empty() ? 0 : hitflags_parse(first_token(gf)); }
     if (param_int(p, c, "kill", iv)) h.kill = iv != 0;
@@ -422,9 +431,9 @@ bool Engine::exec(Player& p, const CnsController& c) {
         return false;
     }
     if (t == "assertspecial") {
-        // Parser em 0x4592A4 (cadeia de stricmp; ids conferidos: nostandguard 0, nocrouchguard 1, noairguard 2, nowalk 6) e executor em 0x44A0FB:
+        // Parser em 0x4592A4 (cadeia de stricmp; tabela inteira conferida em 0x4592A4-0x4598E5: nostandguard 0, nocrouchguard 1, noairguard 2, noautoturn 3, noshadow 4, nojugglecheck 5, nowalk 6, unguardable 7) e executor em 0x44A0FB:
         // byte [jogador + 0x2AC + id] = 1. Le flag, flag2 e flag3. Os demais nomes ainda NAO estao mapeados.
-        static const struct { const char* name; int id; } known[] = { {"nostandguard", 0}, {"nocrouchguard", 1}, {"noairguard", 2}, {"nowalk", 6} };
+        static const struct { const char* name; int id; } known[] = { {"nostandguard", 0}, {"nocrouchguard", 1}, {"noairguard", 2}, {"noautoturn", 3}, {"noshadow", 4}, {"nojugglecheck", 5}, {"nowalk", 6}, {"unguardable", 7} };
         for (size_t i = 0; i < c.params.size(); ++i) {
             const std::string& k = c.params[i].key;
             if (!(ini_iequals(k, "flag") || ini_iequals(k, "flag2") || ini_iequals(k, "flag3"))) continue;
