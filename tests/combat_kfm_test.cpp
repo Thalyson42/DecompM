@@ -1,7 +1,9 @@
 // Teste de combate com o KFM real (dois KFM). Uso: combat_kfm_test <pasta-do-mugen>
 // Baseado na documentacao; os valores NAO foram comparados com o mugen.exe.
 #include "engine/world.h"
+#include <cctype>
 #include <cstdio>
+#include <map>
 #include <string>
 
 static int fails = 0;
@@ -206,7 +208,7 @@ int main(int argc, char** argv) {
     //    pontos - custo < 0 nao acerta; o custo fica em +0x1424), Player_Hit 0x43E619-0x43E6A2 (cria o registro no primeiro golpe) e
     //    0x43E931-0x43E95D (so desconta quando o golpe nao e guardado e o alvo cai ou ja caia), 0x417400 (remove o registro quando
     //    nenhum alvo esta em movetype H, exceto 5150 com Time > 0), chamado depois do pipeline de hits (0x413E15).
-    //    NAO PROVADO: pontos iniciais = Const(data.airjuggle) (+0x64) e custo = juggle do Statedef (+0x1264 via 0x45C07D).
+    //    Pontos iniciais = Const(data.airjuggle) (+0x64): CONFERIDO, ver J2. NAO PROVADO: custo = juggle do Statedef (+0x1264 via 0x45C07D).
     {
         Duel d(ch, 50);
         d.p1.commands.insert("x");
@@ -243,6 +245,39 @@ int main(int argc, char** argv) {
         f.p1.hitdef.hitflag |= 1;                              // fall: [hitdef+0x78] bit 0
         resolve_hits(f.p1, f.e1, f.p2, f.e2);
         CHECK(f.p1.juggleRec && f.p1.juggleLeft == 15 - 1, "golpe que derruba desconta o custo (pts=%d, esperado 14)", f.p1.juggleLeft);
+    }
+    // J2) pontos iniciais do juggle = Const(data.airjuggle) do atacante. CONFERIDO no mugen.exe 1.1b1 (issue #3): o carregador grava a chave
+    //    "airjuggle" em CharData+0x2D0 (0x437620-0x43762E), 0x43A4F9-0x43A507 copia 0x58 dwords de CharData+0x2BC para jogador+0x50
+    //    (logo jogador+0x64 = airjuggle) e Player_Hit le [atacante+0x64] em 0x43E636. O valor 15 do KFM nao distingue constante de numero
+    //    fixo, entao aqui o airjuggle e trocado por 7. O registro e criado no primeiro golpe, guardado ou nao (0x43E619-0x43E6A2).
+    {
+        Character c7 = ch;
+        bool achou = false;
+        std::map<std::string, IniSection>::iterator data = c7.consts.find("data");
+        if (data != c7.consts.end())
+            for (size_t i = 0; i < data->second.entries.size(); ++i) {
+                std::string k = data->second.entries[i].key;
+                for (size_t j = 0; j < k.size(); ++j) k[j] = (char)std::tolower((unsigned char)k[j]);
+                if (k == "airjuggle") { data->second.entries[i].value = "7"; achou = true; }
+            }
+        CHECK(achou, "o KFM deveria ter [Data] airjuggle para o teste trocar");
+        // golpe que acerta: registro com 7 pontos
+        Duel d(c7, 50);
+        d.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { d.step(); d.p1.commands.clear(); }
+        d.e1.tick(d.p1); d.e2.tick(d.p2);
+        CHECK(!d.p1.juggleRec, "antes do primeiro golpe nao ha registro");
+        resolve_hits(d.p1, d.e1, d.p2, d.e2);
+        CHECK(d.p1.juggleRec && d.p1.juggleLeft == 7, "registro criado com data.airjuggle = 7 (rec=%d pts=%d)", (int)d.p1.juggleRec, d.p1.juggleLeft);
+        // golpe guardado: o registro tambem e criado com 7 pontos e nao desconta
+        Duel g(c7, 50);
+        g.p2.commands.insert("holdback"); g.p1.commands.insert("x");
+        for (int t = 0; t < 3; ++t) { g.step(); g.p1.commands.clear(); }
+        g.e1.tick(g.p1); g.e2.tick(g.p2);
+        CHECK(g.p2.guarding, "p2 deveria estar guardando antes do golpe");
+        g.p1.hitdef.hitflag |= 1;                              // mesmo com fall, guardado nao desconta (0x43E931)
+        resolve_hits(g.p1, g.e1, g.p2, g.e2);
+        CHECK(g.p1.moveGuarded && g.p1.juggleRec && g.p1.juggleLeft == 7, "guardado: registro com 7 pontos sem desconto (guardado=%d rec=%d pts=%d)", (int)g.p1.moveGuarded, (int)g.p1.juggleRec, g.p1.juggleLeft);
     }
     // H) sem segurar "tras" o mesmo soco acerta; e a 200 px (fora da guard.dist de 160) nao entra em guarda
     {
