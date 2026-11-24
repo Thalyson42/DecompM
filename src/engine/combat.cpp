@@ -1,4 +1,3 @@
-
 #include "engine/combat.h"
 #include <algorithm>
 #include <cmath>
