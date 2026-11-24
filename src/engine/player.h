@@ -69,6 +69,11 @@ struct Player {
     bool  moveContact, moveHit, moveGuarded;   // vale ate trocar de estado
     bool  guarding;                   // exe: campo +0xEE8 (in_guard_dist); recalculado a cada tick por default_movement
     int   gethitDamage;               // exe: +0x1104; dano pendente, aplicado a vida no proximo tick
+    int   airJumpsLeft;               // exe: +0x278; pulos no ar restantes. Recebe Const(movement.airjump.num) no tick 0 do estado 40; zera ao apanhar/guardar
+    unsigned char assertFlags[8];     // exe: bytes +0x2AC+id (flags do AssertSpecial): 0 nostandguard, 1 nocrouchguard, 2 noairguard, 6 nowalk.
+                                      // Limpos pelo exe DEPOIS de FUN_00434db0 e antes de Player_Update (0x41389E): o flag marcado no tick N vale no tick N+1.
+    int   inputEvent;                 // valor tirado da fila de teclas (anel de 30 em +0x314) neste tick; 0 = fila vazia. O pulo no ar exige exatamente 1.
+                                      // Quem produz os valores (0x4134C9, 0x433B90...) ainda NAO esta portado: o chamador preenche. Consumido por default_movement.
     float defenceMul;                 // exe: +0x1E4 = 100 / Const(data.defence)
     int   lifeMax;                    // exe: +0x1BC
     bool  alive;                      // exe: +0xF00 (trigger Alive)

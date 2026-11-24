@@ -118,6 +118,84 @@ int main(int argc, char** argv) {
         CHECK(j.posY > -0.01f && j.posY < 0.01f, "depois do pouso posY deveria ser 0 (PosSet do estado 52), deu %f", (double)j.posY);
     }
 
+    // 7) pulo no ar (FUN_00434db0, intencao 10 -> estado 45). Assembly: 0x4351CA (evento de teclas == 1 com statetype A),
+    //    0x435370-0x4353C4 (exige ctrl, +0x278 > 0 e airjump.height < -posY; entra no 45 e faz +0x278--).
+    //    O contador +0x278 recebe Const(movement.airjump.num) no tick 0 do estado 40 (Player_Update 0x43C96A).
+    {
+        Player j; eng.enter_state(j, 0); j.ctrl = true; j.facing = 1;
+        CHECK(j.airJumpsLeft == 0, "antes de pular o contador de pulos no ar e 0, veio %d", j.airJumpsLeft);
+        j.commands.insert("holdup");
+        eng.tick(j);
+        j.commands.clear();
+        CHECK(j.stateNo == 40, "holdup leva ao 40, esta em %d", j.stateNo);
+        CHECK(j.airJumpsLeft == 1, "tick 0 do estado 40: contador = airjump.num (1), veio %d", j.airJumpsLeft);
+        // logo depois de sair do chao (posY > -35) o pulo no ar ainda nao vale
+        bool lowTested = false;
+        for (int i = 0; i < 40 && !(j.posY < -40.0f); ++i) {
+            eng.tick(j);
+            if (!lowTested && j.stateNo == 50 && j.ctrl && j.posY > -30.0f && j.posY < 0.0f) {
+                j.inputEvent = 1;
+                eng.tick(j);
+                CHECK(j.stateNo != 45 && j.airJumpsLeft == 1, "abaixo de airjump.height (35) nao pode pular no ar (estado=%d, contador=%d, posY=%f)", j.stateNo, j.airJumpsLeft, (double)j.posY);
+                lowTested = true;
+            }
+        }
+        CHECK(lowTested, "o teste de altura baixa nao rodou");
+        CHECK(j.posY < -40.0f && j.ctrl, "deveria estar acima de 40 px com controle (posY=%f ctrl=%d estado=%d)", (double)j.posY, (int)j.ctrl, j.stateNo);
+        // evento diferente de 1: nada acontece
+        j.inputEvent = 0x11; eng.tick(j);
+        CHECK(j.stateNo != 45, "so o evento 1 dispara o pulo no ar (estado=%d)", j.stateNo);
+        // sem controle: nada acontece
+        bool ctrlSave = j.ctrl; j.ctrl = false; j.inputEvent = 1; eng.tick(j); j.ctrl = ctrlSave;
+        CHECK(j.stateNo != 45, "sem ctrl nao pula no ar (estado=%d)", j.stateNo);
+        // evento 1 com controle, alto e com pulos sobrando: entra no 45 e gasta um pulo
+        j.inputEvent = 1; eng.tick(j);
+        CHECK(j.stateNo == 45 || j.prevStateNo == 45, "deveria entrar no estado 45 (estado=%d prev=%d)", j.stateNo, j.prevStateNo);
+        CHECK(j.airJumpsLeft == 0, "o pulo no ar gasta um pulo (contador=%d)", j.airJumpsLeft);
+        // sem pulos sobrando: um segundo evento nao entra de novo
+        for (int i = 0; i < 6; ++i) eng.tick(j);
+        j.ctrl = true; j.inputEvent = 1; eng.tick(j);
+        CHECK(j.airJumpsLeft == 0 && j.stateNo != 45, "sem pulos sobrando nao entra no 45 de novo (contador=%d estado=%d; se entrasse, o contador iria a -1)", j.airJumpsLeft, j.stateNo);
+        // o evento e consumido a cada tick (o exe tira um valor da fila por tick)
+        CHECK(j.inputEvent == 0, "o evento deveria ser consumido por tick");
+    }
+    // 8) AssertSpecial nowalk (flag +0x2B2 = id 6, parser em 0x459748): o exe limpa os flags DEPOIS do 434db0 e antes do Player_Update
+    //    (0x41389E, apos a chamada em 0x413821), entao o flag marcado no tick N vale para o movimento do tick N+1.
+    {
+        Player w; eng.enter_state(w, 0); w.ctrl = true; w.facing = 1;
+        w.assertFlags[6] = 1; w.commands.insert("holdfwd");
+        eng.tick(w);
+        CHECK(w.stateNo == 0, "nowalk marcado: segurar frente nao anda (estado=%d)", w.stateNo);
+        CHECK(w.assertFlags[6] == 0, "o flag e limpo depois do movimento embutido");
+        eng.tick(w);
+        CHECK(w.stateNo == 20, "sem o flag volta a andar (estado=%d)", w.stateNo);
+        // pelo controller: copia do KFM com um AssertSpecial no estado -1
+        Character c2 = ch;
+        CnsController ac; ac.stateNumber = -1; ac.type = "AssertSpecial"; ac.line = 0;
+        ac.triggers.push_back(std::vector<std::string>(1, "1"));
+        CnsParam pr; pr.key = "flag"; pr.value = "nowalk"; pr.line = 0; ac.params.push_back(pr);
+        CHECK(c2.states.count(-1) != 0, "KFM deveria ter o estado -1");
+        c2.states[-1].controllers.push_back(ac);
+        Engine e2(c2);
+        Player u; e2.enter_state(u, 0); u.ctrl = true; u.facing = 1;
+        e2.tick(u);                       // tick 0: o controller marca nowalk
+        CHECK(u.assertFlags[6] == 1, "AssertSpecial nowalk deveria marcar o flag 6");
+        u.commands.insert("holdfwd");
+        for (int i = 0; i < 5; ++i) e2.tick(u);
+        CHECK(u.stateNo == 0, "com AssertSpecial nowalk todo tick, frente nao anda (estado=%d)", u.stateNo);
+        Player z; eng.enter_state(z, 0); z.ctrl = true; z.facing = 1; z.commands.insert("holdfwd");
+        for (int i = 0; i < 5; ++i) eng.tick(z);
+        CHECK(z.stateNo == 20, "sem AssertSpecial o mesmo KFM anda (estado=%d)", z.stateNo);
+    }
+    // 9) agachar zera a velocidade X (FUN_00434db0 0x43544D: fldz/fstp [+0x248], salvo estado 100)
+    {
+        Player k; eng.enter_state(k, 0); k.ctrl = true; k.facing = 1;
+        k.velX = 3.0f; k.commands.insert("holddown");
+        eng.tick(k);
+        CHECK(k.stateNo == 10, "holddown entra no estado 10 (estado=%d)", k.stateNo);
+        CHECK(k.velX == 0.0f || (k.velX > -0.001f && k.velX < 0.001f), "agachar zera a velocidade X (vel=%f)", (double)k.velX);
+    }
+
     std::printf("controllers/triggers ainda nao implementados encontrados:\n");
     for (std::map<std::string,int>::const_iterator it = p.skipped.begin(); it != p.skipped.end(); ++it)
         std::printf("   %s (%d)\n", it->first.c_str(), it->second);
